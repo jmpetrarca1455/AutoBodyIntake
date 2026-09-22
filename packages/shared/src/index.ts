@@ -9,4 +9,7 @@
  */
 export * from './shop.contracts.js';
 export * from './intake.contracts.js';
+export * from './auth.contracts.js';
+export * from './ai.contracts.js';
+
 

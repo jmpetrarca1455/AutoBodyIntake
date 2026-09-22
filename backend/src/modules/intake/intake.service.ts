@@ -6,6 +6,7 @@ import {
   type SendResult,
 } from '../email/email.service.js';
 import type { SubmissionWithRelations } from '../email/email.template.js';
+import { generateTriageSummary } from '../ai/ai.service.js';
 import {
   buildVehicleSummary,
   type AttachmentKind,
@@ -145,6 +146,26 @@ export async function finalizeSubmission(submissionId: string): Promise<Finalize
       where: { id: submissionId },
       data: { status: 'EMAILED', emailedAt: new Date() },
     });
+
+    // Best-effort: the "AI employee" pre-triages the submission so it's
+    // ready by the time shop staff open the dashboard. Never blocks or
+    // fails the core email-delivery flow.
+    try {
+      const triage = await generateTriageSummary({
+        data: submission.data as unknown as CreateIntakeInput,
+        attachmentCount: submission.attachments.length,
+      });
+      await prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          aiSummary: triage as unknown as Prisma.InputJsonValue,
+          aiSummaryGeneratedAt: new Date(),
+        },
+      });
+    } catch {
+      // AI triage is a bonus, not a requirement — swallow and move on.
+    }
+
     return { submission: updated, send };
   } catch (err) {
     await prisma.submission.update({
@@ -154,3 +175,5 @@ export async function finalizeSubmission(submissionId: string): Promise<Finalize
     throw err;
   }
 }
+
+

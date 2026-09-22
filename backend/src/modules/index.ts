@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { healthRoutes } from './health/health.routes.js';
 import { shopRoutes } from './shops/shop.routes.js';
 import { intakeRoutes } from './intake/intake.routes.js';
+import { authRoutes } from './auth/auth.routes.js';
+import { dashboardRoutes } from './dashboard/dashboard.routes.js';
 
 /**
  * Module registry — the ONE place a new feature module gets wired in.
@@ -22,5 +24,9 @@ export const moduleRegistry: Array<{
   { prefix: '/', register: healthRoutes },
   { prefix: '/v1', register: shopRoutes },
   { prefix: '/v1', register: intakeRoutes },
+  { prefix: '/v1', register: authRoutes },
+  { prefix: '/v1', register: dashboardRoutes },
 ];
+
+
 

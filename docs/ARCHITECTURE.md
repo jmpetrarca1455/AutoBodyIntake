@@ -109,14 +109,45 @@ of every route hand-rolling `reply.code(...).send(...)`.
 As the backend grows, domain-agnostic building blocks (pagination helpers,
 auth/tenancy guards, event bus, etc.) belong here.
 
-## Multi-tenancy today, and where it's headed
+## Multi-tenancy & auth
 
-Every domain row (`Shop`, `Submission`, `Attachment`) is already scoped by
-`shopId` — the app is multi-tenant from day one, not bolted on later. As we
-add shop-owner accounts/auth, the natural next step is a `tenant` guard
-plugin (in `src/plugins/`) that resolves the authenticated shop and makes it
-available on `request`, so every module can filter by it without repeating
-that logic.
+Every domain row (`Shop`, `Submission`, `Attachment`) is scoped by `shopId` —
+the app is multi-tenant from day one, not bolted on later. Each shop signs
+up **independently** (`POST /v1/auth/signup`) — this is a self-serve product
+sold per-shop, with no admin provisioning step.
+
+The tenant guard lives in `src/plugins/70-auth-guard.plugin.ts`: it decorates
+`app.authenticate` (a preHandler that verifies the JWT and sets
+`request.shopId`). Every protected module (currently: `dashboard`) does:
+
+```ts
+app.addHook('preHandler', app.authenticate);
+// ...then every handler reads request.shopId — never a client param.
+```
+
+This is the seam future multi-user roles (owner vs. staff) would extend —
+add a `role` claim to the JWT payload and check it per-route.
+
+## The AI employee layer
+
+The product's north star is an AI that handles the shop's admin work, not
+just a form. `src/modules/ai/ai.service.ts` is the first slice: automatic
+**triage** of every submission (priority, missing info, suggested next
+action), generated the moment a submission is finalized and re-runnable on
+demand via the dashboard (`POST /v1/dashboard/submissions/:id/ai-summary`).
+
+Like storage/email, it's a swappable-driver interface:
+- **`rules`** — deterministic, zero-config, always available. This is also
+  the automatic fallback if the LLM call fails, so AI is never a single
+  point of failure for the core flow.
+- **`openai`** — used automatically when `OPENAI_API_KEY` is set.
+
+**Convention for growing this layer:** new AI-assisted behaviors (drafting
+customer replies, auto-filling a repair estimate, summarizing adjuster
+calls, detecting duplicate/fraudulent submissions...) should each be a
+function in `ai.service.ts` (or a new `ai/*.service.ts` file as it grows)
+with the same shape: a typed input, a rule-based fallback, and an
+LLM-backed implementation behind one call site.
 
 ## Storage & email: swappable drivers
 
@@ -138,4 +169,8 @@ depends on, keep the swappable implementation behind it.
 | Heavier read load on submissions | Add indexes in `prisma/schema.prisma`; the cursor-paginated list query is already index-friendly (`@@index([shopId, createdAt])`) |
 | Need background jobs (e.g. async email retries) | Add a `src/jobs/` folder + a queue plugin in `src/plugins/`; modules enqueue, jobs consume |
 | Public API abuse | Already rate-limited globally (`50-rate-limit.plugin.ts`); tighten per-route with `config: { rateLimit: {...} }` on specific routes if needed |
+| New AI-assisted behavior | New function in `backend/src/modules/ai/ai.service.ts` — same shape: typed input, rule-based fallback, LLM implementation behind one call site |
+| Multi-user per shop (owner + staff roles) | Add a `role` claim to the JWT payload in `auth.service.ts`; check it in route handlers or a new `requireRole()` preHandler |
+
+
 

@@ -20,6 +20,12 @@ model Shop {
   phone          String?
   /// Inbox at the shop where intake submissions are emailed.
   secretaryEmail String
+  /// Login email for the shop owner/staff account (separate from
+  /// secretaryEmail, which may be a shared team inbox). Set on signup.
+  ownerEmail     String?  @unique
+  /// Bcrypt hash of the owner's password. Null until the shop signs up
+  /// for portal access (shops created via the old admin API stay email-only).
+  passwordHash   String?
   /// Unique, unguessable token embedded in the shop's intake link/QR.
   intakeToken    String   @unique @default(cuid())
   isActive       Boolean  @default(true)
@@ -66,6 +72,11 @@ model Submission {
   /// Timestamp the packaged email was successfully delivered.
   emailedAt DateTime?
 
+  /// AI-generated triage: priority, missing info, suggested next action,
+  /// short summary. Regenerable; best-effort (never blocks the intake flow).
+  aiSummary            Json?
+  aiSummaryGeneratedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -92,5 +103,7 @@ model Attachment {
 
   @@index([submissionId])
 }
+
+
 
 

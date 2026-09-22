@@ -40,6 +40,16 @@ const envSchema = z.object({
   // submissions; tighten per-route later if needed.
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+
+  // Shop portal auth (JWT). Falls back to an obviously-insecure dev secret
+  // so local setup works with zero config — MUST be overridden in production.
+  JWT_SECRET: z.string().default('dev-insecure-secret-change-me'),
+  JWT_EXPIRES_IN: z.string().default('7d'),
+
+  // AI triage layer. Falls back to a deterministic rule-based summarizer
+  // when no key is set, so the feature works with zero cloud setup.
+  OPENAI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().default('gpt-4o-mini'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -54,6 +64,19 @@ export const config = parsed.data;
 export type AppConfig = typeof config;
 
 export const isProd = config.NODE_ENV === 'production';
+
+if (isProd && config.JWT_SECRET === 'dev-insecure-secret-change-me') {
+  // eslint-disable-next-line no-console
+  console.error('❌ Refusing to start in production with the default JWT_SECRET.');
+  process.exit(1);
+}
+
+/**
+ * True when an OpenAI key is configured. When false, the AI triage layer
+ * falls back to a deterministic rule-based summarizer.
+ */
+export const hasOpenAI = Boolean(config.OPENAI_API_KEY);
+export const aiDriver: 'openai' | 'rules' = hasOpenAI ? 'openai' : 'rules';
 
 /**
  * True when all S3/R2 credentials are present. When false, the app falls back

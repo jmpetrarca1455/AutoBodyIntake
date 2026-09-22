@@ -103,6 +103,56 @@ POST /v1/intake/:token/submissions/:id/attachments?kind=…   → upload photos/
 POST /v1/intake/:token/submissions/:id/finalize  → email to secretary (EMAILED)
 ```
 
+## Shop portal auth (JWT)
+
+Each shop signs up **independently** — this is a self-serve product sold
+per-shop, not an admin-provisioned one. Signup creates the Shop and its
+owner login together.
+```bash
+curl -X POST http://localhost:3000/v1/auth/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Downtown Collision","secretaryEmail":"front@shop.com","ownerEmail":"owner@shop.com","password":"supersecret123"}'
+# → { "token": "...", "shop": { "id", "name", "ownerEmail" } }
+
+curl -X POST http://localhost:3000/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"ownerEmail":"owner@shop.com","password":"supersecret123"}'
+
+curl http://localhost:3000/v1/auth/me -H 'Authorization: Bearer <token>'
+```
+
+## Shop dashboard (protected — the portal API)
+
+Everything below requires `Authorization: Bearer <token>` from login/signup.
+Every route resolves the shop from the JWT — never a client-supplied id — so
+a shop can only ever see its own data.
+```bash
+curl http://localhost:3000/v1/dashboard/stats                 -H 'Authorization: Bearer <token>'
+curl http://localhost:3000/v1/dashboard/submissions            -H 'Authorization: Bearer <token>'
+curl http://localhost:3000/v1/dashboard/submissions/:id        -H 'Authorization: Bearer <token>'
+curl -X PATCH http://localhost:3000/v1/dashboard/shop \
+  -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"phone":"555-0100"}'
+```
+
+## AI triage — the "AI employee" layer
+
+Every submission is automatically triaged when it's finalized: a priority
+level, a plain-English reason, a list of missing fields, and a suggested
+next action for front-desk staff — so nobody has to read the raw form to
+know what to do next.
+```bash
+curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/ai-summary \
+  -H 'Authorization: Bearer <token>'
+# → { summary, priority, priorityReason, missingInfo[], suggestedNextAction, generatedBy, generatedAt }
+```
+
+**AI backend is auto-selected:** with `OPENAI_API_KEY` set, an LLM generates
+the summary; otherwise a deterministic **rule-based** engine runs instead
+(zero-config, and it's the safety-net fallback even when OpenAI is
+configured — if the API call fails, rules kick in so this is never a single
+point of failure).
+
 ## Scripts
 | Script | Purpose |
 |---|---|

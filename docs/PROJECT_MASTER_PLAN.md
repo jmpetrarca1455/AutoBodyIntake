@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (refactored into scalable npm-workspaces monorepo: shared contracts package, autoloaded backend plugins, module registry — see docs/ARCHITECTURE.md)
+- **Last updated:** September 22, 2026 (shop portal auth + protected dashboard API + AI triage "employee" layer shipped — see docs/ARCHITECTURE.md)
 
 ---
 
@@ -254,13 +254,22 @@ AutoBodyIntake/
 - ⬜ Onboard first pilot shop
 - ⬜ Collect feedback & iterate
 
-### 🤖 Phase 2 — AI Layer (Future)
+### 🔐 Shop Portal & Multi-Tenant Auth
+- ✅ Self-serve shop signup (owner email + password, JWT)
+- ✅ Shop login + `/auth/me`
+- ✅ Tenant auth guard (every protected route scoped to `request.shopId`, never a client param)
+- ✅ Shop dashboard API (stats, submission inbox, submission detail, settings update) — replaces email-only view
+- ✅ Cross-tenant isolation verified (a shop cannot see another shop's data)
+
+### 🤖 AI Employee Layer
+- ✅ AI triage engine (priority, reason, missing-info checklist, suggested next action)
+- ✅ Swappable driver: rule-based (zero-config) ⇄ OpenAI (when `OPENAI_API_KEY` set), with automatic fallback to rules on any AI failure
+- ✅ Auto-runs on every finalized submission; regenerable on demand via dashboard
 - ⬜ OCR auto-fill (license, insurance card, VIN)
-- ⬜ AI-formatted claim summary in email
+- ⬜ AI-drafted customer replies / status updates
 - ⬜ Two-way SMS status updates
 - ⬜ Automated insurance adjuster follow-ups
-- ⬜ Shop dashboard (replace email-only view)
-- ⬜ Multi-tenant auth & shop accounts
+- ⬜ Multi-user roles per shop (owner vs. staff)
 
 ---
 
