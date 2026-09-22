@@ -77,6 +77,23 @@ export const createIntakeSchema = z.object({
 });
 export type CreateIntakeInput = z.infer<typeof createIntakeSchema>;
 
+/**
+ * Partial update to an already-created submission — used to merge in fields
+ * the customer didn't have to type (e.g. OCR auto-fill from a license or
+ * insurance card photo) after the initial submit. Every group is optional
+ * and merged shallowly server-side; `contact.fullName` is NOT required here
+ * since the submission already has one.
+ */
+export const updateIntakeSchema = z.object({
+  contact: contactSchema.partial().optional(),
+  insurance: insuranceSchema,
+  license: licenseSchema,
+  vehicle: vehicleSchema,
+  rental: rentalSchema,
+  claim: claimSchema,
+});
+export type UpdateIntakeInput = z.infer<typeof updateIntakeSchema>;
+
 export const submissionParamsSchema = z.object({ id: z.string().min(1) });
 
 /** Helper: build a human-friendly "2021 Toyota Camry" summary string. */
@@ -119,4 +136,5 @@ export interface CreatedSubmission {
   receivedAt: string;
   message: string;
 }
+
 

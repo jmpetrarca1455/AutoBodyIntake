@@ -11,11 +11,13 @@ export {
   rentalSchema,
   claimSchema,
   createIntakeSchema,
+  updateIntakeSchema,
   submissionParamsSchema,
   buildVehicleSummary,
   attachmentKind,
   ALLOWED_UPLOAD_CONTENT_TYPES,
   type CreateIntakeInput,
+  type UpdateIntakeInput,
   type AttachmentKind,
   type CreatedSubmission,
 } from '@autobody/shared';

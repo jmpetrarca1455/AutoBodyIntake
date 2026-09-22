@@ -125,11 +125,16 @@ export async function generateTriageSummary(input: TriageInput): Promise<AiTriag
   if (hasOpenAI) {
     try {
       return await triageWithOpenAI(input);
-    } catch {
-      // fall through to rules
+    } catch (err) {
+      // Never block the core intake flow on an AI hiccup — but do surface it
+      // (e.g. insufficient_quota, invalid key, rate limit) so it's debuggable
+      // instead of silently and permanently downgrading to rules.
+      // eslint-disable-next-line no-console
+      console.warn('[ai] OpenAI triage failed, falling back to rules:', (err as Error).message);
     }
   }
   return triageWithRules(input);
 }
+
 
 

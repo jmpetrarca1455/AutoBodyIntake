@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
+import { config } from '../../config/index.js';
 import { generateTriageSummary } from '../ai/ai.service.js';
 import type { CreateIntakeInput } from '@autobody/shared';
 import type { Prisma } from '@prisma/client';
@@ -8,6 +9,24 @@ import type { Prisma } from '@prisma/client';
  * day: submission inbox, stats, settings, and triggering AI triage. Always
  * scoped by shopId (from the authenticated JWT), never a client-supplied id.
  */
+
+/** The shop's own settings, including its shareable intake link/token. */
+export async function getShopSettings(shopId: string) {
+  const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+  if (!shop) return null;
+  return {
+    id: shop.id,
+    name: shop.name,
+    address: shop.address,
+    phone: shop.phone,
+    secretaryEmail: shop.secretaryEmail,
+    ownerEmail: shop.ownerEmail,
+    intakeToken: shop.intakeToken,
+    intakeLink: `${config.INTAKE_BASE_URL}/i/${shop.intakeToken}`,
+    isActive: shop.isActive,
+    createdAt: shop.createdAt,
+  };
+}
 
 export interface ListOptions {
   limit?: number;
@@ -87,4 +106,5 @@ export async function runAiTriage(shopId: string, submissionId: string) {
 
   return summary;
 }
+
 

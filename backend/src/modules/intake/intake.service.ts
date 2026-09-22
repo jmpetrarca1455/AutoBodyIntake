@@ -13,6 +13,7 @@ import {
   buildVehicleSummary,
   type AttachmentKind,
   type CreateIntakeInput,
+  type UpdateIntakeInput,
 } from './intake.schemas.js';
 
 /**
@@ -39,12 +40,50 @@ export async function createSubmission(
   });
 }
 
+/**
+ * Merge a partial patch (e.g. OCR-extracted license/insurance/VIN fields)
+ * into an already-created submission. Each group is shallow-merged over the
+ * existing data so a customer's typed answers are never silently overwritten
+ * by a lower-confidence auto-fill unless the patch explicitly sets a value.
+ * Promoted/searchable columns are recomputed from the merged result.
+ */
+export async function updateSubmissionData(
+  submissionId: string,
+  patch: UpdateIntakeInput,
+): Promise<Submission> {
+  const existing = await prisma.submission.findUnique({ where: { id: submissionId } });
+  if (!existing) {
+    throw new NotFoundError('Submission not found');
+  }
+
+  const current = existing.data as unknown as CreateIntakeInput;
+  const merged: CreateIntakeInput = {
+    contact: { ...current.contact, ...patch.contact },
+    insurance: { ...current.insurance, ...patch.insurance },
+    license: { ...current.license, ...patch.license },
+    vehicle: { ...current.vehicle, ...patch.vehicle },
+    rental: { ...current.rental, ...patch.rental },
+    claim: { ...current.claim, ...patch.claim },
+  };
+
+  return prisma.submission.update({
+    where: { id: submissionId },
+    data: {
+      data: merged as unknown as Prisma.InputJsonValue,
+      customerName: merged.contact.fullName || existing.customerName,
+      customerEmail: merged.contact.email ?? existing.customerEmail,
+      customerPhone: merged.contact.phone ?? existing.customerPhone,
+      vehicleInfo: buildVehicleSummary(merged.vehicle) ?? existing.vehicleInfo,
+      claimNumber:
+        merged.insurance?.claimNumber ?? merged.claim?.policeReportNumber ?? existing.claimNumber,
+    },
+  });
+}
+
 export interface ListSubmissionsOptions {
   limit?: number;
   cursor?: string;
-}
-
-/** Paginated list of a shop's submissions (newest first). */
+}/** Paginated list of a shop's submissions (newest first). */
 export async function listSubmissionsForShop(
   shopId: string,
   { limit = 25, cursor }: ListSubmissionsOptions = {},
@@ -207,6 +246,9 @@ export async function finalizeSubmission(submissionId: string): Promise<Finalize
     throw err;
   }
 }
+
+
+
 
 
 

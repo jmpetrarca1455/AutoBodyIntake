@@ -5,8 +5,13 @@
 export {
   signupSchema,
   loginSchema,
+  createStaffSchema,
   type SignupInput,
   type LoginInput,
   type AuthResponse,
+  type ShopRole,
+  type CreateStaffInput,
+  type StaffMember,
 } from '@autobody/shared';
+
 

@@ -30,7 +30,7 @@ const badgeStyles = StyleSheet.create({
 
 export default function Dashboard() {
   const router = useRouter();
-  const { token, shop, loading: authLoading, logout } = useAuth();
+  const { token, shop, role, loading: authLoading, logout } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [items, setItems] = useState<SubmissionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,14 +76,23 @@ export default function Dashboard() {
           <Text style={styles.shopName}>{shop?.name}</Text>
           <Text style={styles.muted}>{shop?.ownerEmail}</Text>
         </View>
-        <Pressable
-          onPress={() => {
-            logout();
-            router.replace('/portal/login');
-          }}
-        >
-          <Text style={styles.logout}>Log out</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          {role === 'OWNER' ? (
+            <Link href="/portal/staff" asChild>
+              <Pressable>
+                <Text style={styles.link}>Manage staff</Text>
+              </Pressable>
+            </Link>
+          ) : null}
+          <Pressable
+            onPress={() => {
+              logout();
+              router.replace('/portal/login');
+            }}
+          >
+            <Text style={styles.logout}>Log out</Text>
+          </Pressable>
+        </View>
       </View>
 
       {stats ? (
@@ -145,6 +154,8 @@ const styles = StyleSheet.create({
   },
   shopName: { fontSize: 18, fontWeight: '800', color: colors.text },
   muted: { fontSize: 13, color: colors.muted },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  link: { color: colors.primary, fontWeight: '600' },
   logout: { color: colors.danger, fontWeight: '600' },
   statsRow: { flexDirection: 'row', padding: spacing.md, gap: spacing.sm },
   stat: {
@@ -170,4 +181,7 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 },
 });
+
+
+
 

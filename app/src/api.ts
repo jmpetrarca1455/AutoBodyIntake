@@ -11,12 +11,29 @@ import type {
   LoginInput,
   AuthResponse,
   AiTriageSummary,
+  OcrExtraction,
+  ShopRole,
+  CreateStaffInput,
+  StaffMember,
 } from '@autobody/shared';
+import { documentKindForAttachmentKind } from '@autobody/shared';
 import { config } from './config';
 
 // Re-export under the names the rest of the app already uses.
 export type IntakePayload = CreateIntakeInput;
-export type { AttachmentKind, PublicShop, SignupInput, LoginInput, AuthResponse, AiTriageSummary };
+export type {
+  AttachmentKind,
+  PublicShop,
+  SignupInput,
+  LoginInput,
+  AuthResponse,
+  AiTriageSummary,
+  OcrExtraction,
+  ShopRole,
+  CreateStaffInput,
+  StaffMember,
+};
+export { documentKindForAttachmentKind };
 
 export interface CreatedSubmission {
   id: string;
@@ -37,6 +54,20 @@ export interface DashboardStats {
   emailed: number;
   failed: number;
   last7Days: number;
+}
+
+export interface ShopSettings {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  secretaryEmail: string;
+  ownerEmail: string | null;
+  intakeToken: string;
+  intakeLink: string;
+  isActive: boolean;
+  createdAt: string;
+  role: ShopRole;
 }
 
 export interface AttachmentSummary {
@@ -140,6 +171,33 @@ export const api = {
     );
   },
 
+  /**
+   * Auto-fill: run OCR on a just-uploaded license/insurance-card/VIN photo.
+   * Best-effort — callers should swallow failures rather than block the form.
+   */
+  runOcr(
+    token: string,
+    submissionId: string,
+    attachmentId: string,
+  ): Promise<{ id: string; ocrData: OcrExtraction | null; ocrGeneratedAt: string | null }> {
+    return request(
+      `/v1/intake/${encodeURIComponent(token)}/submissions/${submissionId}/attachments/${attachmentId}/ocr`,
+      { method: 'POST' },
+    );
+  },
+
+  /** Merge a partial patch (e.g. OCR-extracted fields) into an existing submission. */
+  updateSubmission(
+    token: string,
+    submissionId: string,
+    patch: Partial<IntakePayload>,
+  ): Promise<{ id: string; data: IntakePayload }> {
+    return request(
+      `/v1/intake/${encodeURIComponent(token)}/submissions/${submissionId}`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    );
+  },
+
   // ── Shop portal auth ──────────────────────────────────
   signup(input: SignupInput): Promise<AuthResponse> {
     return request('/v1/auth/signup', { method: 'POST', body: JSON.stringify(input) });
@@ -149,8 +207,21 @@ export const api = {
     return request('/v1/auth/login', { method: 'POST', body: JSON.stringify(input) });
   },
 
-  me(authToken: string): Promise<AuthResponse['shop']> {
+  me(authToken: string): Promise<AuthResponse['shop'] & { role: ShopRole }> {
     return request('/v1/auth/me', undefined, authToken);
+  },
+
+  // ── Staff management (owner-only) ─────────────────────
+  inviteStaff(authToken: string, input: CreateStaffInput): Promise<StaffMember> {
+    return request('/v1/auth/staff', { method: 'POST', body: JSON.stringify(input) }, authToken);
+  },
+
+  listStaff(authToken: string): Promise<StaffMember[]> {
+    return request('/v1/auth/staff', undefined, authToken);
+  },
+
+  deactivateStaff(authToken: string, staffId: string): Promise<StaffMember> {
+    return request(`/v1/auth/staff/${staffId}`, { method: 'DELETE' }, authToken);
   },
 
   // ── Shop dashboard (protected) ────────────────────────
@@ -178,6 +249,11 @@ export const api = {
     return request(`/v1/dashboard/submissions/${submissionId}/ai-summary`, { method: 'POST' }, authToken);
   },
 
+  /** The shop's own settings, including its shareable intake link/token. */
+  getShopSettings(authToken: string): Promise<ShopSettings> {
+    return request('/v1/dashboard/shop', undefined, authToken);
+  },
+
   updateShopSettings(
     authToken: string,
     input: { name?: string; address?: string; phone?: string; secretaryEmail?: string; isActive?: boolean },
@@ -185,6 +261,12 @@ export const api = {
     return request('/v1/dashboard/shop', { method: 'PATCH', body: JSON.stringify(input) }, authToken);
   },
 };
+
+
+
+
+
+
 
 
 

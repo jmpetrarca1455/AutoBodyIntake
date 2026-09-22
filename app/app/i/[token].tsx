@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { api, type IntakePayload, type PublicShop } from '../../src/api';
+import { api, documentKindForAttachmentKind, type IntakePayload, type PublicShop } from '../../src/api';
 import { PhotoPicker, type PickedPhoto } from '../../src/components/PhotoPicker';
 import { ChoiceRow, Field, PrimaryButton, Section } from '../../src/components/ui';
 import { colors, spacing } from '../../src/theme';
@@ -102,10 +102,54 @@ export default function IntakeForm() {
       setProgress('Sending your information…');
       const submission = await api.createSubmission(token, toPayload(draft));
 
+      // Accumulate any auto-filled fields from OCR so we can persist them
+      // server-side (and reflect them locally) after all uploads finish.
+      const ocrPatch: Partial<IntakePayload> = {};
+
       for (let i = 0; i < photos.length; i++) {
         setProgress(`Uploading photo ${i + 1} of ${photos.length}…`);
         const p = photos[i];
-        await api.uploadAttachment(token, submission.id, p.kind, p);
+        const attachment = await api.uploadAttachment(token, submission.id, p.kind, p);
+
+        const documentType = documentKindForAttachmentKind(p.kind);
+        if (documentType) {
+          try {
+            setProgress('Reading your document…');
+            const ocr = await api.runOcr(token, submission.id, attachment.id);
+            const fields = ocr.ocrData?.fields;
+            if (fields) {
+              if (documentType === 'license') {
+                ocrPatch.license = {
+                  ...ocrPatch.license,
+                  ...(fields.name ? { name: fields.name } : {}),
+                  ...(fields.number ? { number: fields.number } : {}),
+                  ...(fields.expiration ? { expiration: fields.expiration } : {}),
+                };
+              } else if (documentType === 'insurance_card') {
+                ocrPatch.insurance = {
+                  ...ocrPatch.insurance,
+                  ...(fields.companyName ? { companyName: fields.companyName } : {}),
+                  ...(fields.policyNumber ? { policyNumber: fields.policyNumber } : {}),
+                };
+              } else if (documentType === 'vin' && fields.vin) {
+                ocrPatch.vehicle = { ...ocrPatch.vehicle, vin: fields.vin };
+              }
+            }
+          } catch {
+            // OCR is a bonus, never a requirement — keep submitting either way.
+          }
+        }
+      }
+
+      if (Object.keys(ocrPatch).length > 0) {
+        setProgress('Applying auto-filled details…');
+        await api.updateSubmission(token, submission.id, ocrPatch).catch(() => {});
+        setDraft((d) => ({
+          ...d,
+          license: { ...d.license, ...ocrPatch.license },
+          insurance: { ...d.insurance, ...ocrPatch.insurance },
+          vehicle: ocrPatch.vehicle?.vin ? { ...d.vehicle, vin: ocrPatch.vehicle.vin } : d.vehicle,
+        }));
       }
 
       setProgress('Finishing up…');
@@ -357,5 +401,8 @@ const styles = StyleSheet.create({
   successMark: { fontSize: 56, color: colors.success },
   successTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
 });
+
+
+
 
 

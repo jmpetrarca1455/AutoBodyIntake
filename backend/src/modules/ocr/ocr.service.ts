@@ -1,6 +1,6 @@
 import {
   OCR_FIELD_TEMPLATES,
-  type AttachmentKind,
+  documentKindForAttachmentKind,
   type OcrDocumentKind,
   type OcrExtraction,
 } from '@autobody/shared';
@@ -16,22 +16,7 @@ import { config, hasOpenAI } from '../../config/index.js';
  *     upload flow, and the UI can still show "not extracted yet").
  *   • openai — real extraction via a vision-capable chat completion.
  */
-
-/** Which attachment categories are eligible for OCR, and what document type they map to. */
-export function documentKindForAttachmentKind(kind: AttachmentKind | string): OcrDocumentKind | null {
-  switch (kind) {
-    case 'license_front':
-    case 'license_back':
-      return 'license';
-    case 'insurance_card_front':
-    case 'insurance_card_back':
-      return 'insurance_card';
-    case 'vin_photo':
-      return 'vin';
-    default:
-      return null;
-  }
-}
+export { documentKindForAttachmentKind };
 
 function emptyExtraction(documentType: OcrDocumentKind): OcrExtraction {
   const fields: Record<string, string | null> = {};
@@ -114,10 +99,13 @@ export async function extractDocumentFields(
   if (hasOpenAI && contentType.startsWith('image/')) {
     try {
       return await extractWithOpenAI(documentType, imageBuffer, contentType);
-    } catch {
-      // fall through to the empty/rules result
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[ocr] OpenAI extraction failed, falling back to empty fields:', (err as Error).message);
     }
   }
   return emptyExtraction(documentType);
 }
+
+
 

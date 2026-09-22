@@ -1,0 +1,22 @@
+# Keep the Docker build context small and avoid ever baking secrets/local
+# state into an image. This lives at the repo root because the backend
+# Dockerfile builds from the monorepo root (npm workspaces requirement —
+# see backend/Dockerfile for why).
+
+**/node_modules
+**/.expo
+**/dist
+**/.git
+**/.env
+**/.env.*
+!**/.env.example
+
+# App (Expo) isn't part of the backend image at all.
+app
+
+# Local dev artifacts.
+backend/uploads
+backend/*.log
+docs
+*.md
+

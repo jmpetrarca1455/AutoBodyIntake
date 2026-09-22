@@ -3,6 +3,7 @@ import {
   listSubmissions,
   getSubmission,
   getStats,
+  getShopSettings,
   updateShopSettings,
   runAiTriage,
 } from './dashboard.service.js';
@@ -45,7 +46,15 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     return summary;
   });
 
-  app.patch('/dashboard/shop', async (request) => {
+  // Full shop settings, including the shareable intake link/token — every
+  // logged-in user (owner or staff) can view this; only owners can edit it.
+  app.get('/dashboard/shop', async (request, reply) => {
+    const shop = await getShopSettings(request.shopId!);
+    if (!shop) return reply.notFound('Shop not found');
+    return { ...shop, role: request.shopRole };
+  });
+
+  app.patch('/dashboard/shop', { preHandler: [app.requireOwner] }, async (request) => {
     const body = request.body as Record<string, unknown>;
     return updateShopSettings(request.shopId!, {
       name: typeof body.name === 'string' ? body.name : undefined,
@@ -56,4 +65,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 }
+
+
+
 

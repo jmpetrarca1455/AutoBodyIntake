@@ -8,6 +8,7 @@ import {
   attachmentKind,
   createIntakeSchema,
   submissionParamsSchema,
+  updateIntakeSchema,
 } from './intake.schemas.js';
 import {
   createSubmission,
@@ -16,6 +17,7 @@ import {
   getSubmissionById,
   listSubmissionsForShop,
   runOcrOnAttachment,
+  updateSubmissionData,
   uploadAttachment,
 } from './intake.service.js';
 
@@ -176,6 +178,37 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
+  // Merge a partial patch (typically OCR-extracted fields) into a submission
+  // that was already created. Customer-facing, same token+submission scoping
+  // as every other route here. Never overwrites fields the patch omits.
+  app.patch('/intake/:token/submissions/:submissionId', async (request, reply) => {
+    const token = intakeTokenParamsSchema.safeParse(request.params);
+    const submissionId = (request.params as { submissionId?: string }).submissionId;
+    if (!token.success || !submissionId) {
+      return reply.badRequest('Invalid token or submission id');
+    }
+
+    const shop = await getShopByIntakeToken(token.data.token);
+    if (!shop || !shop.isActive) {
+      return reply.notFound('Intake link not found or inactive');
+    }
+
+    const submission = await getSubmissionById(submissionId);
+    if (!submission || submission.shopId !== shop.id) {
+      return reply.notFound('Submission not found for this shop');
+    }
+
+    const body = updateIntakeSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.badRequest(
+        body.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+      );
+    }
+
+    const updated = await updateSubmissionData(submissionId, body.data);
+    return reply.send({ id: updated.id, data: updated.data });
+  });
+
   // Finalize a submission: package everything and email it to the shop's
   // secretary. Called after the customer has attached their photos/docs.
   app.post('/intake/:token/submissions/:submissionId/finalize', async (request, reply) => {
@@ -264,6 +297,8 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return submission;
   });
 }
+
+
 
 
 

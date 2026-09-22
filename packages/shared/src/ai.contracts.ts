@@ -34,10 +34,15 @@ export interface AiTriageSummary {
 export const ocrDocumentKind = z.enum(['license', 'insurance_card', 'vin']);
 export type OcrDocumentKind = z.infer<typeof ocrDocumentKind>;
 
-/** Expected field names per document type — the shape the UI can render. */
+/**
+ * Expected field names per document type — deliberately matching the exact
+ * field names in intake.contracts.ts (license.name/number/expiration,
+ * insurance.companyName/policyNumber, vehicle.vin) so extracted OCR fields
+ * can be merged directly into the intake payload with no translation layer.
+ */
 export const OCR_FIELD_TEMPLATES: Record<OcrDocumentKind, string[]> = {
-  license: ['fullName', 'licenseNumber', 'state', 'expirationDate'],
-  insurance_card: ['companyName', 'policyNumber', 'groupNumber', 'memberName'],
+  license: ['name', 'number', 'expiration'],
+  insurance_card: ['companyName', 'policyNumber'],
   vin: ['vin'],
 };
 
@@ -49,5 +54,26 @@ export interface OcrExtraction {
   generatedBy: 'openai' | 'rules';
   generatedAt: string;
 }
+
+/**
+ * Maps an attachment's upload category to the OCR document type it should be
+ * processed as. Shared by the backend (deciding what to extract) and the app
+ * (deciding whether to call the OCR endpoint after an upload at all).
+ */
+export function documentKindForAttachmentKind(kind: string): OcrDocumentKind | null {
+  switch (kind) {
+    case 'license_front':
+    case 'license_back':
+      return 'license';
+    case 'insurance_card_front':
+    case 'insurance_card_back':
+      return 'insurance_card';
+    case 'vin_photo':
+      return 'vin';
+    default:
+      return null;
+  }
+}
+
 
 
