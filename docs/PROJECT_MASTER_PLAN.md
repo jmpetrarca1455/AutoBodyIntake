@@ -270,7 +270,7 @@ AutoBodyIntake/
 - ⬜ AI-drafted customer replies / status updates
 - ⬜ Two-way SMS status updates
 - ⬜ Automated insurance adjuster follow-ups
-- ⬜ Multi-user roles per shop (owner vs. staff)
+- ✅ Multi-user roles per shop (owner vs. staff — `ShopUser`/`ShopRole`, owner-only staff invite/deactivate, auth guard resolves role)
 
 ---
 
