@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getShopByIntakeToken } from '../shops/shop.service.js';
 import { intakeTokenParamsSchema } from '../shops/shop.schemas.js';
 import { storage } from '../storage/storage.service.js';
+import { AppError, ValidationError } from '../../core/errors.js';
 import {
   ALLOWED_UPLOAD_CONTENT_TYPES,
   attachmentKind,
@@ -14,6 +15,7 @@ import {
   getAttachmentById,
   getSubmissionById,
   listSubmissionsForShop,
+  runOcrOnAttachment,
   uploadAttachment,
 } from './intake.service.js';
 
@@ -120,6 +122,60 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
+  // Auto-fill: run OCR on a license/insurance-card/VIN photo and return the
+  // extracted fields so the customer app can pre-fill the rest of the form.
+  // Best-effort by design (see ocr.service.ts) — never a hard dependency.
+  app.post(
+    '/intake/:token/submissions/:submissionId/attachments/:attachmentId/ocr',
+    async (request, reply) => {
+      const token = intakeTokenParamsSchema.safeParse(request.params);
+      const { submissionId, attachmentId } = request.params as {
+        submissionId?: string;
+        attachmentId?: string;
+      };
+      if (!token.success || !submissionId || !attachmentId) {
+        return reply.badRequest('Invalid token, submission id, or attachment id');
+      }
+
+      const shop = await getShopByIntakeToken(token.data.token);
+      if (!shop || !shop.isActive) {
+        return reply.notFound('Intake link not found or inactive');
+      }
+
+      const submission = await getSubmissionById(submissionId);
+      if (!submission || submission.shopId !== shop.id) {
+        return reply.notFound('Submission not found for this shop');
+      }
+
+      const attachment = await getAttachmentById(attachmentId);
+      if (!attachment || attachment.submissionId !== submissionId) {
+        return reply.notFound('Attachment not found for this submission');
+      }
+
+      try {
+        const updated = await runOcrOnAttachment(attachmentId);
+        return reply.send({
+          id: updated.id,
+          ocrData: updated.ocrData,
+          ocrGeneratedAt: updated.ocrGeneratedAt,
+        });
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          return reply.badRequest(err.message);
+        }
+        if (err instanceof AppError) {
+          return reply.code(err.statusCode).send({
+            statusCode: err.statusCode,
+            error: err.code,
+            message: err.message,
+          });
+        }
+        request.log.error(err, 'OCR extraction failed');
+        return reply.internalServerError('Could not extract document fields.');
+      }
+    },
+  );
+
   // Finalize a submission: package everything and email it to the shop's
   // secretary. Called after the customer has attached their photos/docs.
   app.post('/intake/:token/submissions/:submissionId/finalize', async (request, reply) => {
@@ -208,6 +264,8 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return submission;
   });
 }
+
+
 
 
 

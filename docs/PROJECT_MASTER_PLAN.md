@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (shop portal auth + protected dashboard API + AI triage "employee" layer shipped — see docs/ARCHITECTURE.md)
+- **Last updated:** September 22, 2026 (OCR auto-fill for license/insurance/VIN photos shipped — see docs/ARCHITECTURE.md)
 
 ---
 
@@ -265,7 +265,8 @@ AutoBodyIntake/
 - ✅ AI triage engine (priority, reason, missing-info checklist, suggested next action)
 - ✅ Swappable driver: rule-based (zero-config) ⇄ OpenAI (when `OPENAI_API_KEY` set), with automatic fallback to rules on any AI failure
 - ✅ Auto-runs on every finalized submission; regenerable on demand via dashboard
-- ⬜ OCR auto-fill (license, insurance card, VIN)
+- 🔜 **TODO: wire up a real `OPENAI_API_KEY` and compare LLM-generated triage vs. the rule-based baseline** (currently running rules-only — no key configured yet; verify quality/cost before relying on it for pilot shops)
+- ✅ OCR auto-fill (license, insurance card, VIN) — swappable driver (rule-based zero-config fallback ⇄ OpenAI Vision), triggered per-attachment via `POST /v1/intake/:token/submissions/:id/attachments/:attachmentId/ocr`, result persisted on the attachment (`ocrData`, `ocrGeneratedAt`)
 - ⬜ AI-drafted customer replies / status updates
 - ⬜ Two-way SMS status updates
 - ⬜ Automated insurance adjuster follow-ups

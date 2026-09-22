@@ -99,10 +99,16 @@ model Attachment {
   /// Object-storage key/path (S3/R2). Populated once storage is wired.
   storageKey  String?
 
+  /// AI-extracted document fields (license/insurance card/VIN OCR).
+  /// Null until OCR has run; regenerable; best-effort like AI triage.
+  ocrData        Json?
+  ocrGeneratedAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([submissionId])
 }
+
 
 
 

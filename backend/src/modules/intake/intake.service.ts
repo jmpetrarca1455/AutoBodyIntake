@@ -1,5 +1,6 @@
 import type { Prisma, Submission } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
+import { NotFoundError, ValidationError } from '../../core/errors.js';
 import { buildStorageKey, storage } from '../storage/storage.service.js';
 import {
   sendSubmissionEmail,
@@ -7,6 +8,7 @@ import {
 } from '../email/email.service.js';
 import type { SubmissionWithRelations } from '../email/email.template.js';
 import { generateTriageSummary } from '../ai/ai.service.js';
+import { documentKindForAttachmentKind, extractDocumentFields } from '../ocr/ocr.service.js';
 import {
   buildVehicleSummary,
   type AttachmentKind,
@@ -119,6 +121,36 @@ export async function getAttachmentById(id: string) {
   });
 }
 
+/**
+ * Run (or re-run) OCR auto-fill on a single attachment (license, insurance
+ * card, or VIN photo). Fetches the stored bytes, extracts fields via the
+ * swappable OCR driver, and persists the result on the attachment row.
+ */
+export async function runOcrOnAttachment(attachmentId: string) {
+  const attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } });
+  if (!attachment || !attachment.storageKey) {
+    throw new NotFoundError('Attachment not found');
+  }
+
+  const documentType = documentKindForAttachmentKind(attachment.kind);
+  if (!documentType) {
+    throw new ValidationError(
+      'OCR is only available for license, insurance card, and VIN photos.',
+    );
+  }
+
+  const bytes = await storage.getBytes(attachment.storageKey);
+  const extraction = await extractDocumentFields(documentType, bytes, attachment.contentType);
+
+  return prisma.attachment.update({
+    where: { id: attachmentId },
+    data: {
+      ocrData: extraction as unknown as Prisma.InputJsonValue,
+      ocrGeneratedAt: new Date(),
+    },
+  });
+}
+
 // ── Finalize (package + email to the shop) ──────────────
 
 export interface FinalizeResult {
@@ -175,5 +207,7 @@ export async function finalizeSubmission(submissionId: string): Promise<Finalize
     throw err;
   }
 }
+
+
 
 

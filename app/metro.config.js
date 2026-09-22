@@ -14,11 +14,24 @@ const workspaceRoot = path.resolve(projectRoot, '..');
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [workspaceRoot];
+// IMPORTANT: do NOT set watchFolders to the whole monorepo root. Metro's
+// NodeWatcher calls fs.watch() on every crawled directory, and the root
+// also contains backend/ (its own node_modules + uploads/, which grows
+// with every submission's photos) and docs/ and .git — none of which the
+// app needs, and watching all of it blows past macOS's per-process
+// FSEvents descriptor limit (EMFILE). Only watch what's actually needed to
+// resolve app code + the shared workspace package + hoisted deps.
+config.watchFolders = [
+  projectRoot,
+  path.resolve(workspaceRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'packages/shared'),
+];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
 module.exports = config;
+
+
 
