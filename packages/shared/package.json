@@ -1,0 +1,27 @@
+{
+  "name": "@autobody/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared Zod schemas & TypeScript contracts between the backend API and the customer app. Single source of truth — change a field here, both sides stay in sync.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
+

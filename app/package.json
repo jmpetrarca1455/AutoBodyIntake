@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@autobody/shared": "*",
     "@expo/metro-runtime": "~3.2.3",
     "expo": "~51.0.0",
     "expo-constants": "~16.0.0",
@@ -30,3 +31,4 @@
     "typescript": "~5.3.3"
   }
 }
+

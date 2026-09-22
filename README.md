@@ -7,25 +7,35 @@ A vertical software product for auto-body / collision repair shops.
 ## 📄 Start here
 
 👉 **[docs/PROJECT_MASTER_PLAN.md](docs/PROJECT_MASTER_PLAN.md)** — the master project plan and living progress tracker for the entire business venture.
+👉 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the codebase is organized and how it's designed to scale (new modules, new verticals, growth checklist).
 
 ## Status
 
-✅ **MVP feature-complete (backend + app), end-to-end verified.** Remaining: deployment & pilot onboarding. See the master plan's checklist for details.
+✅ **MVP feature-complete (backend + app), end-to-end verified.** Refactored into a scalable npm-workspaces monorepo (shared contracts, autoloaded backend plugins, module registry). Remaining: deployment & pilot onboarding. See the master plan's checklist for details.
 
 ## Monorepo layout
 ```
 AutoBodyIntake/
-├── backend/   ← Fastify + TypeScript API (Postgres/Prisma, storage, email)
-├── app/       ← Expo (iOS/Android/web) customer intake app
-└── docs/      ← Master plan & docs
+├── package.json      ← npm workspaces root
+├── packages/
+│   └── shared/        ← @autobody/shared — contracts used by backend AND app
+├── backend/            ← Fastify + TypeScript API (Postgres/Prisma, storage, email)
+├── app/                 ← Expo (iOS/Android/web) customer intake app
+└── docs/                 ← Master plan, architecture, & docs
 ```
 
 ## Run it locally (full stack)
 
+### 0. Install everything (one command, monorepo-wide)
+```bash
+npm install               # installs & links shared/backend/app together
+npm run build:shared      # compiles @autobody/shared (re-run after editing contracts)
+npm run typecheck         # typechecks shared + backend + app in one shot
+```
+
 ### 1. Backend
 ```bash
 cd backend
-npm install
 cp .env.example .env
 npm run db:up            # local Postgres via Docker
 npx prisma migrate dev   # apply migrations
@@ -38,7 +48,6 @@ S3/R2 and Resend credentials in `.env`.
 ### 2. App
 ```bash
 cd app
-npm install
 npm run web              # fastest way to test in a browser
 # or: npm run ios / npm run android
 ```

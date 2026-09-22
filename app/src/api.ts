@@ -1,70 +1,14 @@
 /**
- * Shared types + API client for the AutoBody Intake backend.
- * Mirrors the backend contracts (see backend/src/modules/intake).
+ * Typed API client for the AutoBody Intake backend.
+ * Contract types come from @autobody/shared — the single source of truth
+ * also used by the backend, so a field added there is typed here for free.
  */
+import type { AttachmentKind, CreateIntakeInput, PublicShop } from '@autobody/shared';
 import { config } from './config';
 
-// ── Intake payload (mirrors backend Zod schema) ─────────
-export type PreferredContact = 'phone' | 'email' | 'text';
-
-export interface IntakePayload {
-  contact: {
-    fullName: string;
-    phone?: string;
-    email?: string;
-    preferredContactMethod?: PreferredContact;
-  };
-  insurance?: {
-    companyName?: string;
-    policyNumber?: string;
-    claimNumber?: string;
-    adjusterName?: string;
-    adjusterContact?: string;
-  };
-  license?: {
-    name?: string;
-    number?: string;
-    expiration?: string;
-  };
-  vehicle?: {
-    year?: number;
-    make?: string;
-    model?: string;
-    vin?: string;
-    licensePlate?: string;
-    mileage?: number;
-    damageDescription?: string;
-  };
-  rental?: {
-    hasCoverage?: 'yes' | 'no' | 'unknown';
-    limitOrDays?: string;
-    preference?: string;
-  };
-  claim?: {
-    accidentDate?: string;
-    accidentLocation?: string;
-    policeReportNumber?: string;
-    otherPartyInfo?: string;
-    atFault?: 'self' | 'other' | 'unknown';
-  };
-}
-
-export type AttachmentKind =
-  | 'insurance_card_front'
-  | 'insurance_card_back'
-  | 'license_front'
-  | 'license_back'
-  | 'vehicle_photo'
-  | 'damage_photo'
-  | 'vin_photo'
-  | 'other';
-
-export interface PublicShop {
-  name: string;
-  address: string | null;
-  intakeToken: string;
-  isActive: boolean;
-}
+// Re-export under the names the rest of the app already uses.
+export type IntakePayload = CreateIntakeInput;
+export type { AttachmentKind, PublicShop };
 
 export interface CreatedSubmission {
   id: string;
@@ -145,4 +89,5 @@ export const api = {
     );
   },
 };
+
 

@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (backend MVP complete + Expo intake app scaffolded: full form, photos, submit → email)
+- **Last updated:** September 22, 2026 (refactored into scalable npm-workspaces monorepo: shared contracts package, autoloaded backend plugins, module registry — see docs/ARCHITECTURE.md)
 
 ---
 

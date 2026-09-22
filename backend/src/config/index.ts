@@ -34,6 +34,12 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().default('AutoBody Intake <intake@example.com>'),
 
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
+
+  // Global request rate limiting (protects public, unauthenticated intake
+  // endpoints from abuse). Generous defaults for legitimate multi-photo
+  // submissions; tighten per-route later if needed.
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 const parsed = envSchema.safeParse(process.env);
