@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "AutoBody Intake",
+    "slug": "autobody-intake",
+    "scheme": "autobodyintake",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0b3d91"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.autobodyintake.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to photograph your license, insurance card, and vehicle damage.",
+        "NSPhotoLibraryUsageDescription": "Used to attach photos of your documents and vehicle damage."
+      }
+    },
+    "android": {
+      "package": "com.autobodyintake.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router"],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}
+

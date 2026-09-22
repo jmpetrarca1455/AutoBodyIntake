@@ -1,0 +1,96 @@
+// AutoBody Intake — Prisma schema
+// Generates a type-safe client for PostgreSQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A body shop tenant. Each shop has a unique intake token used to build
+/// its shareable intake link / QR code, and a destination "secretary"
+/// email where completed submissions are delivered.
+model Shop {
+  id             String   @id @default(cuid())
+  name           String
+  address        String?
+  phone          String?
+  /// Inbox at the shop where intake submissions are emailed.
+  secretaryEmail String
+  /// Unique, unguessable token embedded in the shop's intake link/QR.
+  intakeToken    String   @unique @default(cuid())
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  submissions Submission[]
+
+  @@index([intakeToken])
+}
+
+/// Lifecycle of an intake submission as it moves through the shop.
+enum SubmissionStatus {
+  RECEIVED
+  EMAILED
+  FAILED
+  ARCHIVED
+}
+
+/// A single customer intake submission for a shop. The full structured
+/// form payload is stored in `data` (JSON) so the form can evolve without
+/// a migration for every field, while frequently-queried/searchable fields
+/// are promoted to real columns and indexed.
+model Submission {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  status SubmissionStatus @default(RECEIVED)
+
+  // ── Promoted, searchable summary fields ──────────────
+  customerName  String
+  customerEmail String?
+  customerPhone String?
+  vehicleInfo   String? // e.g. "2021 Toyota Camry"
+  claimNumber   String?
+
+  /// Full validated intake payload (all field groups).
+  data Json
+
+  /// Uploaded files/photos linked to this submission.
+  attachments Attachment[]
+
+  /// Timestamp the packaged email was successfully delivered.
+  emailedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId, createdAt])
+  @@index([status])
+}
+
+/// A file/photo attached to a submission (license, insurance card,
+/// damage photos, etc.). Binary lives in object storage; we keep metadata.
+model Attachment {
+  id           String @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  /// Logical category, e.g. "insurance_card_front", "damage_photo".
+  kind        String
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  /// Object-storage key/path (S3/R2). Populated once storage is wired.
+  storageKey  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([submissionId])
+}
+
+

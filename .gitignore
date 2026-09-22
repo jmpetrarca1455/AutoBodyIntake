@@ -1,0 +1,33 @@
+# ── Dependencies ─────────────────────────────────────────
+**/node_modules/
+
+# ── Build output ─────────────────────────────────────────
+**/dist/
+**/build/
+**/web-build/
+
+# ── Expo ─────────────────────────────────────────────────
+**/.expo/
+**/expo-env.d.ts
+
+# ── Env & secrets (keep .env.example) ────────────────────
+**/.env
+**/.env.*
+!**/.env.example
+
+# ── Generated data: submissions + email previews ─────────
+# (contains real customer info from test submissions — never publish)
+backend/uploads/
+
+# ── Prisma local db ──────────────────────────────────────
+**/prisma/*.db
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── OS / editor ──────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+
