@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (OCR auto-fill for license/insurance/VIN photos shipped — see docs/ARCHITECTURE.md)
+- **Last updated:** September 22, 2026 (multi-user shop roles, Fly.io deploy + Docker fix, backend deployed & healthy — see docs/ARCHITECTURE.md / docs/DEPLOYMENT.md)
 
 ---
 
@@ -247,7 +247,7 @@ AutoBodyIntake/
 
 ### 🚀 Launch Prep (MVP)
 - ✅ End-to-end test (customer submits → shop receives email)
-- ⬜ Deploy backend to hosting
+- ✅ Deploy backend to hosting (Fly.io — Postgres attached, health checks passing, verified live)
 - ⬜ Deploy web intake page
 - ⬜ TestFlight (iOS) build
 - ⬜ Google Play internal test build
