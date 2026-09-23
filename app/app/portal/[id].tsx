@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -46,6 +46,18 @@ const SEVERITY_COLORS: Record<string, string> = {
   moderate: '#a16207',
   severe: '#c2410c',
   total_loss_likely: '#b91c1c',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  RECEIVED: '#64748b',
+  IN_REVIEW: '#a16207',
+  EMAILED: '#0369a1',
+  ESTIMATE_READY: '#7c3aed',
+  IN_REPAIR: '#c2410c',
+  READY_FOR_PICKUP: '#0891b2',
+  COMPLETED: '#15803d',
+  FAILED: '#b91c1c',
+  ARCHIVED: '#64748b',
 };
 
 const MILESTONE_OPTIONS = (Object.keys(MILESTONE_LABELS) as StatusMilestone[]).map((value) => ({
@@ -106,6 +118,64 @@ async function toLocalFile(asset: ImagePicker.ImagePickerAsset): Promise<LocalFi
   return { uri, name: asset.fileName ?? `document-${Date.now()}.${ext}`, mimeType };
 }
 
+/** Derive the editable form shape from a loaded/just-saved submission. */
+function buildForm(detail: SubmissionDetail): EditableData {
+  return {
+    contact: {
+      ...detail.data.contact,
+      fullName: detail.data.contact?.fullName || detail.customerName,
+      smsConsent: detail.data.contact?.smsConsent ?? false,
+    },
+    insurance: { ...detail.data.insurance },
+    license: { ...detail.data.license },
+    vehicle: { ...detail.data.vehicle },
+    rental: { ...detail.data.rental },
+    claim: { ...detail.data.claim },
+  };
+}
+
+/** A single label/value row for the read-only (non-editing) view. Renders
+ * nothing when the value is empty, so groups with no data collapse away. */
+function ReadOnlyRow({ label, value }: { label: string; value?: string | number | null }) {
+  if (value === undefined || value === null || value === '') return null;
+  return (
+    <View style={{ marginBottom: spacing.sm }}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
+  );
+}
+
+/** A titled card box — used to arrange field groups (Contact, Insurance,
+ * Vehicle, etc.) as a responsive multi-column grid that fills the screen
+ * width instead of one long list running down the left edge. */
+function GroupCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={styles.groupCard}>
+      <Text style={styles.groupCardTitle}>{title}</Text>
+      <View style={styles.fieldGrid}>{children}</View>
+    </View>
+  );
+}
+
+/** A single field's slot inside a GroupCard's mini-grid. Pass `full` for
+ * long-text fields (descriptions, notes) that should span the whole card. */
+function GridItem({ full, children }: { full?: boolean; children: ReactNode }) {
+  return <View style={[styles.fieldGridItem, full && styles.fieldGridItemFull]}>{children}</View>;
+}
+
+/** A titled card box for prose/stat content (not a field-input grid) — used
+ * to break AI Triage/Damage Assessment output into scannable boxes instead
+ * of one long column of labels and paragraphs. */
+function InfoCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={styles.groupCard}>
+      <Text style={styles.groupCardTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
 export default function SubmissionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -117,8 +187,13 @@ export default function SubmissionDetailScreen() {
   // Editable customer-file form state
   const [form, setForm] = useState<EditableData>(emptyEditable());
   const [status, setStatus] = useState<string>('RECEIVED');
+  const [editingFile, setEditingFile] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
+
+  // Standalone status dropdown (always available, independent of edit mode)
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
 
   // Damage assessment
   const [assessing, setAssessing] = useState(false);
@@ -171,18 +246,7 @@ export default function SubmissionDetailScreen() {
     setSubmission(detail);
     setComms(log);
     setStatus(detail.status);
-    setForm({
-      contact: {
-        ...detail.data.contact,
-        fullName: detail.data.contact?.fullName || detail.customerName,
-        smsConsent: detail.data.contact?.smsConsent ?? false,
-      },
-      insurance: { ...detail.data.insurance },
-      license: { ...detail.data.license },
-      vehicle: { ...detail.data.vehicle },
-      rental: { ...detail.data.rental },
-      claim: { ...detail.data.claim },
-    });
+    setForm(buildForm(detail));
   }, [token, id]);
 
   useEffect(() => {
@@ -220,11 +284,42 @@ export default function SubmissionDetailScreen() {
         status: status as never,
       });
       setSubmission(updated);
+      setForm(buildForm(updated));
+      setEditingFile(false);
       setSaveResult('Saved!');
     } catch (err) {
       setSaveResult(err instanceof Error ? err.message : 'Failed to save.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  function cancelEdit() {
+    if (submission) {
+      setForm(buildForm(submission));
+      setStatus(submission.status);
+    }
+    setSaveResult(null);
+    setEditingFile(false);
+  }
+
+  /** Change just the lifecycle status via the header dropdown — saves
+   * immediately without requiring the full "Edit" form to be open. */
+  async function changeStatus(newStatus: string) {
+    setStatusMenuOpen(false);
+    if (!token || !id || newStatus === status) return;
+    const previous = status;
+    setStatus(newStatus);
+    setChangingStatus(true);
+    try {
+      const updated = await api.updateSubmissionStaff(token, id, { status: newStatus as never });
+      setSubmission(updated);
+      setForm(buildForm(updated));
+    } catch (err) {
+      setStatus(previous);
+      Alert.alert('Failed to update status', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setChangingStatus(false);
     }
   }
 
@@ -443,22 +538,26 @@ export default function SubmissionDetailScreen() {
             <View style={[styles.priorityBadge, { backgroundColor: PRIORITY_COLORS[ai.priority] ?? colors.muted }]}>
               <Text style={styles.priorityText}>{ai.priority.toUpperCase()}</Text>
             </View>
-            <Text style={styles.label}>Why</Text>
-            <Text style={styles.value}>{ai.priorityReason}</Text>
-            <Text style={styles.label}>Summary</Text>
-            <Text style={styles.value}>{ai.summary}</Text>
-            {ai.missingInfo.length > 0 && (
-              <>
-                <Text style={styles.label}>Missing info</Text>
-                {ai.missingInfo.map((m) => (
-                  <Text key={m} style={styles.bullet}>
-                    • {m}
-                  </Text>
-                ))}
-              </>
-            )}
-            <Text style={styles.label}>Suggested next action</Text>
-            <Text style={styles.value}>{ai.suggestedNextAction}</Text>
+            <View style={styles.groupGrid}>
+              <InfoCard title="Why this priority">
+                <Text style={styles.value}>{ai.priorityReason}</Text>
+              </InfoCard>
+              <InfoCard title="Summary">
+                <Text style={styles.value}>{ai.summary}</Text>
+              </InfoCard>
+              {ai.missingInfo.length > 0 && (
+                <InfoCard title="Missing info">
+                  {ai.missingInfo.map((m) => (
+                    <Text key={m} style={styles.bullet}>
+                      • {m}
+                    </Text>
+                  ))}
+                </InfoCard>
+              )}
+              <InfoCard title="Suggested next action">
+                <Text style={styles.value}>{ai.suggestedNextAction}</Text>
+              </InfoCard>
+            </View>
             <Text style={styles.tiny}>
               Generated by {ai.generatedBy} at {new Date(ai.generatedAt).toLocaleString()}
             </Text>
@@ -482,29 +581,34 @@ export default function SubmissionDetailScreen() {
             >
               <Text style={styles.priorityText}>{damage.severity.replace(/_/g, ' ').toUpperCase()}</Text>
             </View>
-            {damage.affectedAreas.length > 0 && (
-              <>
-                <Text style={styles.label}>Affected areas</Text>
-                {damage.affectedAreas.map((a) => (
-                  <Text key={a} style={styles.bullet}>
-                    • {a}
-                  </Text>
-                ))}
-              </>
-            )}
-            <Text style={styles.label}>Repair complexity</Text>
-            <Text style={styles.value}>{damage.repairComplexity}</Text>
-            <Text style={styles.label}>Est. labor hours</Text>
-            <Text style={styles.value}>
-              {damage.estimatedLaborHours.min}–{damage.estimatedLaborHours.max} hrs
-            </Text>
-            <Text style={styles.label}>Est. cost range</Text>
-            <Text style={styles.value}>
-              ${damage.estimatedCostRange.min.toLocaleString()}–${damage.estimatedCostRange.max.toLocaleString()}{' '}
-              {damage.estimatedCostRange.currency}
-            </Text>
-            <Text style={styles.label}>Recommendation</Text>
-            <Text style={styles.value}>{damage.recommendation}</Text>
+            <View style={styles.groupGrid}>
+              {damage.affectedAreas.length > 0 && (
+                <InfoCard title="Affected areas">
+                  {damage.affectedAreas.map((a) => (
+                    <Text key={a} style={styles.bullet}>
+                      • {a}
+                    </Text>
+                  ))}
+                </InfoCard>
+              )}
+              <InfoCard title="Repair complexity">
+                <Text style={styles.value}>{damage.repairComplexity}</Text>
+              </InfoCard>
+              <InfoCard title="Est. labor hours">
+                <Text style={styles.value}>
+                  {damage.estimatedLaborHours.min}–{damage.estimatedLaborHours.max} hrs
+                </Text>
+              </InfoCard>
+              <InfoCard title="Est. cost range">
+                <Text style={styles.value}>
+                  ${damage.estimatedCostRange.min.toLocaleString()}–${damage.estimatedCostRange.max.toLocaleString()}{' '}
+                  {damage.estimatedCostRange.currency}
+                </Text>
+              </InfoCard>
+              <InfoCard title="Recommendation">
+                <Text style={styles.value}>{damage.recommendation}</Text>
+              </InfoCard>
+            </View>
             <Text style={styles.disclaimer}>{damage.disclaimer}</Text>
             <Text style={styles.tiny}>
               Generated by {damage.generatedBy} · confidence: {damage.confidence} ·{' '}
@@ -523,152 +627,400 @@ export default function SubmissionDetailScreen() {
         </View>
       </Section>
 
-      <Section title="Customer file (editable)">
-        <ChoiceRow label="Status" value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+      <View style={styles.section}>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionHeaderLeft}>
+            <Text style={styles.sectionTitleRow}>Customer file</Text>
+            <View style={styles.statusDropdownWrap}>
+              <Pressable
+                style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[status] ?? colors.muted }]}
+                onPress={() => setStatusMenuOpen((o) => !o)}
+                disabled={changingStatus}
+              >
+                <Text style={styles.statusBadgeText}>
+                  {changingStatus
+                    ? 'Updating…'
+                    : (SUBMISSION_STATUS_LABELS[status as keyof typeof SUBMISSION_STATUS_LABELS] ?? status)}
+                </Text>
+                <Text style={styles.statusBadgeCaret}>{statusMenuOpen ? '▴' : '▾'}</Text>
+              </Pressable>
+              {statusMenuOpen && (
+                <View style={styles.statusMenu}>
+                  {STATUS_OPTIONS.map((o) => (
+                    <Pressable
+                      key={o.value}
+                      style={[styles.statusMenuItem, o.value === status && styles.statusMenuItemActive]}
+                      onPress={() => changeStatus(o.value)}
+                    >
+                      <View style={[styles.statusMenuDot, { backgroundColor: STATUS_COLORS[o.value] ?? colors.muted }]} />
+                      <Text style={styles.statusMenuItemText}>{o.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+          {!editingFile && (
+            <Pressable style={styles.editIconButton} onPress={() => setEditingFile(true)}>
+              <Text style={styles.editIconText}>✎ Edit</Text>
+            </Pressable>
+          )}
+        </View>
 
-        <Text style={styles.groupHeader}>Contact</Text>
-        <Field
-          label="Full name"
-          value={form.contact.fullName}
-          onChangeText={(v) => setField('contact', 'fullName', v)}
-        />
-        <Field label="Phone" value={form.contact.phone} onChangeText={(v) => setField('contact', 'phone', v)} />
-        <Field label="Email" value={form.contact.email} onChangeText={(v) => setField('contact', 'email', v)} />
+        <View style={styles.card}>
+          {editingFile ? (
+            <>
+              <View style={styles.groupGrid}>
+                <GroupCard title="Contact">
+                  <GridItem>
+                    <Field
+                      label="Full name"
+                      value={form.contact.fullName}
+                      onChangeText={(v) => setField('contact', 'fullName', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field label="Phone" value={form.contact.phone} onChangeText={(v) => setField('contact', 'phone', v)} />
+                  </GridItem>
+                  <GridItem>
+                    <Field label="Email" value={form.contact.email} onChangeText={(v) => setField('contact', 'email', v)} />
+                  </GridItem>
+                </GroupCard>
 
-        <Text style={styles.groupHeader}>Insurance</Text>
-        <Field
-          label="Company"
-          value={form.insurance.companyName}
-          onChangeText={(v) => setField('insurance', 'companyName', v)}
-        />
-        <Field
-          label="Policy #"
-          value={form.insurance.policyNumber}
-          onChangeText={(v) => setField('insurance', 'policyNumber', v)}
-        />
-        <Field
-          label="Claim #"
-          value={form.insurance.claimNumber}
-          onChangeText={(v) => setField('insurance', 'claimNumber', v)}
-        />
-        <Field
-          label="Adjuster name"
-          value={form.insurance.adjusterName}
-          onChangeText={(v) => setField('insurance', 'adjusterName', v)}
-        />
-        <Field
-          label="Adjuster contact"
-          value={form.insurance.adjusterContact}
-          onChangeText={(v) => setField('insurance', 'adjusterContact', v)}
-        />
+                <GroupCard title="Insurance">
+                  <GridItem>
+                    <Field
+                      label="Company"
+                      value={form.insurance.companyName}
+                      onChangeText={(v) => setField('insurance', 'companyName', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Policy #"
+                      value={form.insurance.policyNumber}
+                      onChangeText={(v) => setField('insurance', 'policyNumber', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Claim #"
+                      value={form.insurance.claimNumber}
+                      onChangeText={(v) => setField('insurance', 'claimNumber', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Adjuster name"
+                      value={form.insurance.adjusterName}
+                      onChangeText={(v) => setField('insurance', 'adjusterName', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Adjuster contact"
+                      value={form.insurance.adjusterContact}
+                      onChangeText={(v) => setField('insurance', 'adjusterContact', v)}
+                    />
+                  </GridItem>
+                </GroupCard>
 
-        <Text style={styles.groupHeader}>License</Text>
-        <Field label="Name" value={form.license.name} onChangeText={(v) => setField('license', 'name', v)} />
-        <Field
-          label="Number"
-          value={form.license.number}
-          onChangeText={(v) => setField('license', 'number', v)}
-        />
-        <Field
-          label="Expiration"
-          value={form.license.expiration}
-          onChangeText={(v) => setField('license', 'expiration', v)}
-        />
+                <GroupCard title="License">
+                  <GridItem>
+                    <Field label="Name" value={form.license.name} onChangeText={(v) => setField('license', 'name', v)} />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Number"
+                      value={form.license.number}
+                      onChangeText={(v) => setField('license', 'number', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Expiration"
+                      value={form.license.expiration}
+                      onChangeText={(v) => setField('license', 'expiration', v)}
+                    />
+                  </GridItem>
+                </GroupCard>
 
-        <Text style={styles.groupHeader}>Vehicle</Text>
-        <Field
-          label="Year"
-          value={form.vehicle.year ? String(form.vehicle.year) : ''}
-          keyboardType="number-pad"
-          onChangeText={(v) => setField('vehicle', 'year', v)}
-        />
-        <Field label="Make" value={form.vehicle.make} onChangeText={(v) => setField('vehicle', 'make', v)} />
-        <Field label="Model" value={form.vehicle.model} onChangeText={(v) => setField('vehicle', 'model', v)} />
-        <Field label="VIN" value={form.vehicle.vin} onChangeText={(v) => setField('vehicle', 'vin', v)} />
-        <Field
-          label="License plate"
-          value={form.vehicle.licensePlate}
-          onChangeText={(v) => setField('vehicle', 'licensePlate', v)}
-        />
-        <Field
-          label="Mileage"
-          value={form.vehicle.mileage ? String(form.vehicle.mileage) : ''}
-          keyboardType="number-pad"
-          onChangeText={(v) => setField('vehicle', 'mileage', v)}
-        />
-        <Field
-          label="Damage description"
-          value={form.vehicle.damageDescription}
-          multiline
-          onChangeText={(v) => setField('vehicle', 'damageDescription', v)}
-        />
+                <GroupCard title="Vehicle">
+                  <GridItem>
+                    <Field
+                      label="Year"
+                      value={form.vehicle.year ? String(form.vehicle.year) : ''}
+                      keyboardType="number-pad"
+                      onChangeText={(v) => setField('vehicle', 'year', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field label="Make" value={form.vehicle.make} onChangeText={(v) => setField('vehicle', 'make', v)} />
+                  </GridItem>
+                  <GridItem>
+                    <Field label="Model" value={form.vehicle.model} onChangeText={(v) => setField('vehicle', 'model', v)} />
+                  </GridItem>
+                  <GridItem>
+                    <Field label="VIN" value={form.vehicle.vin} onChangeText={(v) => setField('vehicle', 'vin', v)} />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="License plate"
+                      value={form.vehicle.licensePlate}
+                      onChangeText={(v) => setField('vehicle', 'licensePlate', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Mileage"
+                      value={form.vehicle.mileage ? String(form.vehicle.mileage) : ''}
+                      keyboardType="number-pad"
+                      onChangeText={(v) => setField('vehicle', 'mileage', v)}
+                    />
+                  </GridItem>
+                  <GridItem full>
+                    <Field
+                      label="Damage description"
+                      value={form.vehicle.damageDescription}
+                      multiline
+                      onChangeText={(v) => setField('vehicle', 'damageDescription', v)}
+                    />
+                  </GridItem>
+                </GroupCard>
 
-        <Text style={styles.groupHeader}>Rental</Text>
-        <Field
-          label="Coverage (yes/no/unknown)"
-          value={form.rental.hasCoverage}
-          onChangeText={(v) => setField('rental', 'hasCoverage', v)}
-        />
-        <Field
-          label="Limit or days"
-          value={form.rental.limitOrDays}
-          onChangeText={(v) => setField('rental', 'limitOrDays', v)}
-        />
-        <Field
-          label="Preference"
-          value={form.rental.preference}
-          onChangeText={(v) => setField('rental', 'preference', v)}
-        />
+                <GroupCard title="Rental">
+                  <GridItem>
+                    <Field
+                      label="Coverage (yes/no/unknown)"
+                      value={form.rental.hasCoverage}
+                      onChangeText={(v) => setField('rental', 'hasCoverage', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Limit or days"
+                      value={form.rental.limitOrDays}
+                      onChangeText={(v) => setField('rental', 'limitOrDays', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Preference"
+                      value={form.rental.preference}
+                      onChangeText={(v) => setField('rental', 'preference', v)}
+                    />
+                  </GridItem>
+                </GroupCard>
 
-        <Text style={styles.groupHeader}>Claim</Text>
-        <Field
-          label="Accident date"
-          value={form.claim.accidentDate}
-          onChangeText={(v) => setField('claim', 'accidentDate', v)}
-        />
-        <Field
-          label="Location"
-          value={form.claim.accidentLocation}
-          onChangeText={(v) => setField('claim', 'accidentLocation', v)}
-        />
-        <Field
-          label="Police report #"
-          value={form.claim.policeReportNumber}
-          onChangeText={(v) => setField('claim', 'policeReportNumber', v)}
-        />
-        <Field
-          label="At fault (self/other/unknown)"
-          value={form.claim.atFault}
-          onChangeText={(v) => setField('claim', 'atFault', v)}
-        />
-        <Field
-          label="Other party info"
-          value={form.claim.otherPartyInfo}
-          multiline
-          onChangeText={(v) => setField('claim', 'otherPartyInfo', v)}
-        />
+                <GroupCard title="Claim">
+                  <GridItem>
+                    <Field
+                      label="Accident date"
+                      value={form.claim.accidentDate}
+                      onChangeText={(v) => setField('claim', 'accidentDate', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Location"
+                      value={form.claim.accidentLocation}
+                      onChangeText={(v) => setField('claim', 'accidentLocation', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Police report #"
+                      value={form.claim.policeReportNumber}
+                      onChangeText={(v) => setField('claim', 'policeReportNumber', v)}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="At fault (self/other/unknown)"
+                      value={form.claim.atFault}
+                      onChangeText={(v) => setField('claim', 'atFault', v)}
+                    />
+                  </GridItem>
+                  <GridItem full>
+                    <Field
+                      label="Other party info"
+                      value={form.claim.otherPartyInfo}
+                      multiline
+                      onChangeText={(v) => setField('claim', 'otherPartyInfo', v)}
+                    />
+                  </GridItem>
+                </GroupCard>
+              </View>
 
-        <PrimaryButton title="Save changes" loading={saving} onPress={saveChanges} />
-        {saveResult ? <Text style={styles.resultText}>{saveResult}</Text> : null}
-      </Section>
+              <View style={styles.row}>
+                <Pressable style={[styles.secondaryButton, { flex: 1 }]} onPress={cancelEdit}>
+                  <Text style={styles.secondaryButtonText}>Cancel</Text>
+                </Pressable>
+                <View style={{ flex: 1 }}>
+                  <PrimaryButton title="Save changes" loading={saving} onPress={saveChanges} />
+                </View>
+              </View>
+              {saveResult ? <Text style={styles.resultText}>{saveResult}</Text> : null}
+            </>
+          ) : (
+            <View style={styles.groupGrid}>
+              <GroupCard title="Contact">
+                <GridItem>
+                  <ReadOnlyRow label="Full name" value={form.contact.fullName} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="Phone" value={form.contact.phone} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="Email" value={form.contact.email} />
+                </GridItem>
+              </GroupCard>
+
+              <GroupCard title="Insurance">
+                {form.insurance.companyName ||
+                form.insurance.policyNumber ||
+                form.insurance.claimNumber ||
+                form.insurance.adjusterName ||
+                form.insurance.adjusterContact ? (
+                  <>
+                    <GridItem>
+                      <ReadOnlyRow label="Company" value={form.insurance.companyName} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Policy #" value={form.insurance.policyNumber} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Claim #" value={form.insurance.claimNumber} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Adjuster name" value={form.insurance.adjusterName} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Adjuster contact" value={form.insurance.adjusterContact} />
+                    </GridItem>
+                  </>
+                ) : (
+                  <GridItem full>
+                    <Text style={styles.muted}>No insurance info on file.</Text>
+                  </GridItem>
+                )}
+              </GroupCard>
+
+              <GroupCard title="License">
+                {form.license.name || form.license.number || form.license.expiration ? (
+                  <>
+                    <GridItem>
+                      <ReadOnlyRow label="Name" value={form.license.name} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Number" value={form.license.number} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Expiration" value={form.license.expiration} />
+                    </GridItem>
+                  </>
+                ) : (
+                  <GridItem full>
+                    <Text style={styles.muted}>No license info on file.</Text>
+                  </GridItem>
+                )}
+              </GroupCard>
+
+              <GroupCard title="Vehicle">
+                <GridItem>
+                  <ReadOnlyRow label="Year" value={form.vehicle.year} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="Make" value={form.vehicle.make} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="Model" value={form.vehicle.model} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="VIN" value={form.vehicle.vin} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="License plate" value={form.vehicle.licensePlate} />
+                </GridItem>
+                <GridItem>
+                  <ReadOnlyRow label="Mileage" value={form.vehicle.mileage} />
+                </GridItem>
+                <GridItem full>
+                  <ReadOnlyRow label="Damage description" value={form.vehicle.damageDescription} />
+                </GridItem>
+              </GroupCard>
+
+              <GroupCard title="Rental">
+                {form.rental.hasCoverage || form.rental.limitOrDays || form.rental.preference ? (
+                  <>
+                    <GridItem>
+                      <ReadOnlyRow label="Coverage" value={form.rental.hasCoverage} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Limit or days" value={form.rental.limitOrDays} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Preference" value={form.rental.preference} />
+                    </GridItem>
+                  </>
+                ) : (
+                  <GridItem full>
+                    <Text style={styles.muted}>No rental info on file.</Text>
+                  </GridItem>
+                )}
+              </GroupCard>
+
+              <GroupCard title="Claim">
+                {form.claim.accidentDate ||
+                form.claim.accidentLocation ||
+                form.claim.policeReportNumber ||
+                form.claim.atFault ||
+                form.claim.otherPartyInfo ? (
+                  <>
+                    <GridItem>
+                      <ReadOnlyRow label="Accident date" value={form.claim.accidentDate} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Location" value={form.claim.accidentLocation} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="Police report #" value={form.claim.policeReportNumber} />
+                    </GridItem>
+                    <GridItem>
+                      <ReadOnlyRow label="At fault" value={form.claim.atFault} />
+                    </GridItem>
+                    <GridItem full>
+                      <ReadOnlyRow label="Other party info" value={form.claim.otherPartyInfo} />
+                    </GridItem>
+                  </>
+                ) : (
+                  <GridItem full>
+                    <Text style={styles.muted}>No claim info on file.</Text>
+                  </GridItem>
+                )}
+              </GroupCard>
+            </View>
+          )}
+        </View>
+      </View>
 
       <Section title={`Documents & photos (${submission.attachments.length})`}>
         {submission.attachments.length === 0 ? (
           <Text style={styles.muted}>None uploaded.</Text>
         ) : (
-          submission.attachments.map((a) => {
-            const isImage = a.contentType.startsWith('image/');
-            const url = api.attachmentUrl(a.id);
-            return (
-              <View key={a.id} style={styles.attachmentRow}>
-                {isImage ? (
-                  <Image source={{ uri: url }} style={styles.attachmentThumb} />
-                ) : (
-                  <View style={[styles.attachmentThumb, styles.attachmentThumbFallback]}>
-                    <Text style={styles.attachmentThumbText}>FILE</Text>
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
+          <View style={styles.groupGrid}>
+            {submission.attachments.map((a) => {
+              const isImage = a.contentType.startsWith('image/');
+              const url = api.attachmentUrl(a.id);
+              return (
+                <View key={a.id} style={styles.attachmentCard}>
+                  {isImage ? (
+                    <Image source={{ uri: url }} style={styles.attachmentThumbLarge} />
+                  ) : (
+                    <View style={[styles.attachmentThumbLarge, styles.attachmentThumbFallback]}>
+                      <Text style={styles.attachmentThumbText}>FILE</Text>
+                    </View>
+                  )}
                   <Text style={styles.attachmentKind}>
                     {ATTACHMENT_KIND_LABELS[a.kind as AttachmentKind] ?? a.kind}
                   </Text>
@@ -684,9 +1036,9 @@ export default function SubmissionDetailScreen() {
                     </Pressable>
                   </View>
                 </View>
-              </View>
-            );
-          })
+              );
+            })}
+          </View>
         )}
 
         <Text style={styles.groupHeader}>Add / replace a document</Text>
@@ -903,6 +1255,108 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
+  section: { marginBottom: spacing.lg },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    marginLeft: spacing.xs,
+    marginRight: spacing.xs,
+  },
+  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  sectionTitleRow: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statusDropdownWrap: { position: 'relative', zIndex: 20 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  statusBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  statusBadgeCaret: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  statusMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: spacing.xs,
+    minWidth: 220,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.xs,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  statusMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  statusMenuItemActive: { backgroundColor: colors.inputBg },
+  statusMenuDot: { width: 8, height: 8, borderRadius: 4 },
+  statusMenuItemText: { fontSize: 14, color: colors.text, fontWeight: '600' },
+  editIconButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  editIconText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
+  secondaryButton: {
+    borderRadius: radius.md,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  secondaryButtonText: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  groupGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.md },
+  groupCard: {
+    flexGrow: 1,
+    flexBasis: 300,
+    minWidth: 260,
+    backgroundColor: colors.inputBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  groupCardTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.sm,
+  },
+  fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  fieldGridItem: { flexBasis: '46%', flexGrow: 1, minWidth: 120 },
+  fieldGridItemFull: { flexBasis: '100%' },
   priorityBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
@@ -950,15 +1404,23 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontSize: 13 },
   chipTextActive: { color: '#fff', fontWeight: '600' },
   row: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  attachmentRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  attachmentCard: {
+    flexGrow: 1,
+    flexBasis: 200,
+    minWidth: 180,
+    backgroundColor: colors.inputBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  attachmentThumb: { width: 64, height: 64, borderRadius: radius.sm, backgroundColor: colors.border },
+  attachmentThumbLarge: {
+    width: '100%',
+    height: 120,
+    borderRadius: radius.sm,
+    backgroundColor: colors.border,
+    marginBottom: spacing.sm,
+  },
   attachmentThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   attachmentThumbText: { fontSize: 10, fontWeight: '800', color: colors.muted },
   attachmentKind: { fontSize: 14, fontWeight: '700', color: colors.text },
@@ -975,6 +1437,25 @@ const styles = StyleSheet.create({
   smallButtonText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   buttonDisabled: { opacity: 0.5 },
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
