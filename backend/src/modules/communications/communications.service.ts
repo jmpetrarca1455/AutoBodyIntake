@@ -142,10 +142,33 @@ export async function sendStatusUpdate(
   const submission = await getScopedSubmission(shopId, submissionId);
   if (!submission) return null;
 
-  // Prefer SMS (faster, higher open rate) when we have a phone number and
-  // the caller didn't explicitly force email; fall back to email.
-  const channel: 'sms' | 'email' =
-    input.channel ?? (submission.customerPhone ? 'sms' : 'email');
+  const data = submission.data as unknown as CreateIntakeInput;
+  const smsConsent = data.contact?.smsConsent === true;
+
+  // Prefer SMS (faster, higher open rate) when we have a phone number AND
+  // the customer opted in (TCPA — never text without explicit consent),
+  // and the caller didn't explicitly force email; fall back to email.
+  let channel: 'sms' | 'email' = input.channel ?? (submission.customerPhone && smsConsent ? 'sms' : 'email');
+  if (channel === 'sms' && !smsConsent) {
+    // Caller explicitly asked for SMS but the customer never consented —
+    // fail closed rather than silently texting someone who opted out/never in.
+    if (submission.customerEmail) {
+      channel = 'email';
+    } else {
+      const row = await prisma.communicationLog.create({
+        data: {
+          submissionId,
+          channel: 'sms',
+          direction: 'outbound',
+          milestone: input.milestone,
+          body: input.message,
+          aiDrafted: false,
+          status: 'failed',
+        },
+      });
+      return toEntry(row);
+    }
+  }
 
   let status: 'sent' | 'failed' | 'preview' = 'sent';
   try {
@@ -254,5 +277,6 @@ export async function sendAdjusterEmail(
   });
   return toEntry(row);
 }
+
 
 

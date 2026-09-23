@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (Two-way SMS inbound webhook, automated adjuster follow-up sweep, and configurable CORS lockdown shipped — the "AI employee" layer is now feature-complete per the original roadmap)
+- **Last updated:** September 22, 2026 (TCPA-compliant SMS consent shipped — explicit opt-in checkbox at intake, enforced server-side even against explicit staff requests, on top of the two-way SMS webhook, automated adjuster follow-up sweep, and CORS lockdown — the "AI employee" layer is feature-complete and its riskiest compliance gap is closed)
 
 ---
 
@@ -340,8 +340,8 @@ At $499–$999/mo pricing, gross margins stay ~90%+.
 - [ ] **Data retention policy:** define how long we keep submissions and images.
 - [ ] **Consent:** clear notice to customer that data is shared with their chosen body shop.
 - [ ] **Email security:** submissions contain PII — ensure delivery provider supports secure transport; consider link-to-portal instead of raw attachments later.
-- [ ] **TCPA compliance:** required *before* any SMS features (Phase 2) — explicit opt-in.
-- [ ] **Access control:** each shop only ever sees its own submissions (enforced when dashboard is built).
+- [x] **TCPA compliance:** explicit SMS opt-in checkbox at intake (`contact.smsConsent`, shown only when a phone is entered, with full disclosure text incl. "reply STOP to opt out"). Enforced server-side, not just in the UI — `sendStatusUpdate` refuses to use SMS (falls back to email, or fails closed if no email either) whenever `smsConsent !== true`, even if a staff member explicitly requests the SMS channel. Verified via curl: consented → SMS; not consented (default or forced channel) → safely rerouted to email.
+- [x] **Access control:** every dashboard/communications/automation route is shop-scoped via the JWT (`request.shopId`), never a client-supplied param; verified cross-tenant isolation earlier in testing.
 - [ ] **Terms of Service & Privacy Policy:** needed before public launch.
 
 ---

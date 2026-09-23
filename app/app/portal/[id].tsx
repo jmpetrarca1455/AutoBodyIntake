@@ -185,6 +185,7 @@ export default function SubmissionDetailScreen() {
   const ai = submission.aiSummary;
   const damage = submission.damageAssessment;
   const d = submission.data;
+  const smsConsent = d.contact?.smsConsent === true;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -293,11 +294,17 @@ export default function SubmissionDetailScreen() {
         />
         <View style={{ height: spacing.sm }} />
         <PrimaryButton
-          title={submission.customerPhone ? 'Send via SMS' : 'Send via email'}
+          title={submission.customerPhone && smsConsent ? 'Send via SMS' : 'Send via email'}
           loading={sendingUpdate}
           disabled={!draftMessage.trim()}
           onPress={sendUpdate}
         />
+        {submission.customerPhone && !smsConsent ? (
+          <Text style={styles.disclaimer}>
+            This customer has a phone on file but didn't opt in to SMS at intake — sending via email
+            instead. (TCPA compliance: never text without explicit consent.)
+          </Text>
+        ) : null}
         {updateResult ? <Text style={styles.resultText}>{updateResult}</Text> : null}
       </Section>
 
@@ -455,5 +462,7 @@ const styles = StyleSheet.create({
   commMeta: { fontSize: 11, color: colors.muted, marginBottom: 2, fontWeight: '600' },
   commSubject: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
 });
+
+
 
 

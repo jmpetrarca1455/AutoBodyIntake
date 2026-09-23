@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { api, documentKindForAttachmentKind, type IntakePayload, type PublicShop } from '../../src/api';
 import { PhotoPicker, type PickedPhoto } from '../../src/components/PhotoPicker';
-import { ChoiceRow, Field, PrimaryButton, Section } from '../../src/components/ui';
+import { ChoiceRow, Checkbox, Field, PrimaryButton, Section } from '../../src/components/ui';
 import { colors, spacing } from '../../src/theme';
 
 type VehicleDraft = {
@@ -35,7 +35,7 @@ type Draft = {
 };
 
 const emptyDraft: Draft = {
-  contact: { fullName: '' },
+  contact: { fullName: '', smsConsent: false },
   insurance: {},
   license: {},
   vehicle: {},
@@ -55,6 +55,7 @@ function toPayload(d: Draft): IntakePayload {
       phone: d.contact.phone || undefined,
       email: d.contact.email || undefined,
       preferredContactMethod: d.contact.preferredContactMethod,
+      smsConsent: d.contact.smsConsent ?? false,
     },
     insurance: clean(d.insurance),
     license: clean(d.license),
@@ -236,6 +237,13 @@ export default function IntakeForm() {
               { label: 'Email', value: 'email' },
             ]}
           />
+          {draft.contact.phone ? (
+            <Checkbox
+              label="I agree to receive text message updates about my repair from this shop (e.g. status updates). Message & data rates may apply. Message frequency varies. Reply STOP to opt out at any time."
+              value={!!draft.contact.smsConsent}
+              onChange={(v) => set('contact', { smsConsent: v })}
+            />
+          ) : null}
         </Section>
 
         <Section title="Insurance">
@@ -401,6 +409,10 @@ const styles = StyleSheet.create({
   successMark: { fontSize: 56, color: colors.success },
   successTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
 });
+
+
+
+
 
 
 

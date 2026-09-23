@@ -37,6 +37,26 @@ export function Field({
   );
 }
 
+/** Checkbox with a tappable label — used for consent/opt-in (e.g. SMS TCPA). */
+export function Checkbox({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <Pressable style={styles.checkboxRow} onPress={() => onChange(!value)}>
+      <View style={[styles.checkboxBox, value && styles.checkboxBoxChecked]}>
+        {value ? <Text style={styles.checkboxMark}>✓</Text> : null}
+      </View>
+      <Text style={styles.checkboxLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
 /** Simple single-select chip group. */
 export function ChoiceRow<T extends string>({
   label,
@@ -140,6 +160,20 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { color: colors.text, fontSize: 14 },
   chipTextActive: { color: '#fff', fontWeight: '600' },
+  checkboxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingVertical: 4 },
+  checkboxBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxBoxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxMark: { color: '#fff', fontSize: 14, fontWeight: '800', lineHeight: 16 },
+  checkboxLabel: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 18 },
   button: {
     backgroundColor: colors.primary,
     borderRadius: radius.md,
@@ -150,4 +184,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
+
+
 

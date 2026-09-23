@@ -16,6 +16,12 @@ export const contactSchema = z.object({
   phone: z.string().max(50).optional(),
   email: z.string().email().optional(),
   preferredContactMethod: preferredContactMethod.optional(),
+  /**
+   * TCPA-required explicit opt-in before the shop may text this customer
+   * automated status updates. Defaults false (never assume consent).
+   * Gate every outbound SMS on this — see backend communications.service.ts.
+   */
+  smsConsent: z.boolean().optional().default(false),
 });
 
 export const insuranceSchema = z
@@ -136,5 +142,6 @@ export interface CreatedSubmission {
   receivedAt: string;
   message: string;
 }
+
 
 
