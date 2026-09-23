@@ -78,6 +78,25 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '').slice(-10);
 }
 
+// Standard SMS opt-out keywords (matches Twilio's own default compliance
+// list). Twilio auto-suppresses future sends to numbers that reply with
+// these on capable number types/messaging services, but we ALSO flip our
+// own `smsConsent` flag as defense-in-depth so `sendStatusUpdate`'s
+// server-side consent check (see estimate/status-update flow) blocks SMS
+// even if Twilio-level suppression doesn't apply for a given setup.
+const SMS_OPT_OUT_KEYWORDS = new Set([
+  'stop',
+  'stopall',
+  'unsubscribe',
+  'cancel',
+  'end',
+  'quit',
+]);
+
+function isOptOutMessage(body: string): boolean {
+  return SMS_OPT_OUT_KEYWORDS.has(body.trim().toLowerCase());
+}
+
 export async function recordInboundSms(
   fromPhone: string,
   body: string,
@@ -93,7 +112,7 @@ export async function recordInboundSms(
     where: { customerPhone: { not: null } },
     orderBy: { createdAt: 'desc' },
     take: 500,
-    select: { id: true, shopId: true, customerPhone: true },
+    select: { id: true, shopId: true, customerPhone: true, data: true },
   });
   const match = candidates.find((c) => normalizePhone(c.customerPhone ?? '') === normalized);
   if (!match) return null;
@@ -109,6 +128,15 @@ export async function recordInboundSms(
       status: 'sent',
     },
   });
+
+  if (isOptOutMessage(body)) {
+    const data = (match.data as Record<string, any>) ?? {};
+    const contact = { ...(data.contact ?? {}), smsConsent: false };
+    await prisma.submission.update({
+      where: { id: match.id },
+      data: { data: { ...data, contact } },
+    });
+  }
 
   return { submissionId: match.id, shopId: match.shopId };
 }
@@ -277,6 +305,7 @@ export async function sendAdjusterEmail(
   });
   return toEntry(row);
 }
+
 
 
 
