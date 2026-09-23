@@ -109,3 +109,43 @@ export async function sendSubmissionEmail(
 
 export { emailDriver };
 
+/**
+ * Send a freeform email (no submission template/attachments) — used for
+ * AI-drafted adjuster follow-ups and other one-off staff-initiated emails.
+ * Same Resend/preview driver split as submission emails.
+ */
+export async function sendRawEmail(
+  to: string,
+  subject: string,
+  body: string,
+): Promise<SendResult> {
+  const html = `<div style="font:15px system-ui;white-space:pre-wrap">${body
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')}</div>`;
+
+  if (hasEmail) {
+    const resend = new Resend(config.RESEND_API_KEY);
+    const { data, error } = await resend.emails.send({
+      from: config.EMAIL_FROM,
+      to,
+      subject,
+      html,
+      text: body,
+    });
+    if (error) {
+      throw new Error(`Resend error: ${error.message}`);
+    }
+    return { driver: 'resend', to, messageId: data?.id };
+  }
+
+  const dir = resolve(config.UPLOAD_DIR, '_email_previews');
+  await mkdir(dir, { recursive: true });
+  const previewPath = join(dir, `raw-${Date.now()}.html`);
+  const banner = `<div style="background:#fffbdd;border-bottom:1px solid #e6d800;padding:8px 12px;font:13px system-ui">
+    <strong>EMAIL PREVIEW (not sent)</strong> — To: ${to} · Subject: ${subject}
+  </div>`;
+  await writeFile(previewPath, banner + html, 'utf8');
+  return { driver: 'preview', to, previewPath };
+}
+
+

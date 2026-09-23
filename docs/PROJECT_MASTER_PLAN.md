@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (Full local pilot dry-run verified end-to-end; shop settings/intake-link/QR screen added; fixed two monorepo dependency bugs — see docs/LOCAL_PILOT_TESTING.md)
+- **Last updated:** September 22, 2026 (AI damage assessment, AI-drafted status updates/SMS, AI-drafted adjuster emails, and the Smart Queue shipped — the "AI employee" layer now covers triage, OCR, damage estimation, and both customer- and adjuster-facing communications)
 
 ---
 
@@ -267,10 +267,13 @@ AutoBodyIntake/
 - ✅ Swappable driver: rule-based (zero-config) ⇄ OpenAI (when `OPENAI_API_KEY` set), with automatic fallback to rules on any AI failure
 - ✅ Auto-runs on every finalized submission; regenerable on demand via dashboard
 - 🔜 **TODO: wire up a real `OPENAI_API_KEY` and compare LLM-generated triage vs. the rule-based baseline** (currently running rules-only — no key configured yet; verify quality/cost before relying on it for pilot shops)
-- ✅ OCR auto-fill (license, insurance card, VIN) — swappable driver (rule-based zero-config fallback ⇄ OpenAI Vision), triggered per-attachment via `POST /v1/intake/:token/submissions/:id/attachments/:attachmentId/ocr`, result persisted on the attachment (`ocrData`, `ocrGeneratedAt`)
-- ⬜ AI-drafted customer replies / status updates
-- ⬜ Two-way SMS status updates
-- ⬜ Automated insurance adjuster follow-ups
+- ✅ OCR auto-fill (license, insurance, VIN) — swappable driver (rule-based zero-config fallback ⇄ OpenAI Vision), triggered per-attachment via `POST /v1/intake/:token/submissions/:id/attachments/:attachmentId/ocr`, result persisted on the attachment (`ocrData`, `ocrGeneratedAt`)
+- ✅ AI damage assessment — Vision-based severity/scope triage read from damage photos + description (severity, affected areas, est. labor hours, est. cost range, recommendation, always with a non-binding disclaimer). Swappable rules ⇄ OpenAI Vision, regenerable via dashboard (`POST /dashboard/submissions/:id/damage-assessment`). **Standout differentiator — competitors just collect photos, this triages them.**
+- ✅ AI-drafted customer status updates — one-click AI draft (per milestone: received/in-review/estimate-ready/parts-ordered/in-repair/quality-check/ready-for-pickup/etc.) that staff review/edit before sending via SMS (Twilio, swappable ⇄ preview) or email; full audit log per submission (`CommunicationLog`)
+- ✅ AI-drafted adjuster follow-up emails — one-click draft requesting claim status/approval, pre-filled with claim#/policy#/insurer/adjuster from the intake data, staff review/edit before sending
+- ✅ Smart Queue — shop-wide ranked worklist (`GET /dashboard/queue`) combining AI priority + submission age + missing-info count into one score, so front-desk staff always know what to work on next instead of scanning a plain inbox
+- ⬜ Two-way SMS status updates (inbound replies — outbound is done; Twilio webhook ingestion is the remaining piece)
+- ⬜ Automated (scheduled/recurring) insurance adjuster follow-ups — one-click drafting is done; auto-triggering on a timer (e.g. "no adjuster reply in 3 days") is the remaining piece
 - ✅ Multi-user roles per shop (owner vs. staff — `ShopUser`/`ShopRole`, owner-only staff invite/deactivate, auth guard resolves role)
 
 ---

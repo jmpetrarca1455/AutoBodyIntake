@@ -33,6 +33,12 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('AutoBody Intake <intake@example.com>'),
 
+  // SMS status updates (Twilio). Leave blank to use the "preview" fallback
+  // (logged + stored, never actually sent) — zero-config dev.
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM_NUMBER: z.string().optional(),
+
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
 
   // Global request rate limiting (protects public, unauthenticated intake
@@ -95,4 +101,14 @@ export const storageDriver: 's3' | 'local' = hasS3Storage ? 's3' : 'local';
  */
 export const hasEmail = Boolean(config.RESEND_API_KEY);
 export const emailDriver: 'resend' | 'preview' = hasEmail ? 'resend' : 'preview';
+
+/**
+ * True when Twilio credentials are configured. When false, SMS "sends" are
+ * logged + stored as a preview instead of actually dispatched — so the
+ * status-update flow is fully testable with zero telecom setup.
+ */
+export const hasTwilio = Boolean(
+  config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN && config.TWILIO_FROM_NUMBER,
+);
+export const smsDriver: 'twilio' | 'preview' = hasTwilio ? 'twilio' : 'preview';
 

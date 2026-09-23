@@ -153,6 +153,71 @@ the summary; otherwise a deterministic **rule-based** engine runs instead
 configured — if the API call fails, rules kick in so this is never a single
 point of failure).
 
+## AI damage assessment (Vision-based triage)
+
+Analyzes a submission's damage photos + written description to give staff
+an instant severity/scope read *before* an estimator looks at the car —
+the kind of triage a plain intake-collection tool doesn't do.
+```bash
+curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/damage-assessment \
+  -H 'Authorization: Bearer <token>'
+# → { severity, affectedAreas[], repairComplexity, estimatedLaborHours{min,max},
+#     estimatedCostRange{min,max,currency}, recommendation, disclaimer,
+#     confidence, generatedBy, generatedAt }
+```
+Same swappable rules/OpenAI-Vision pattern as everything else in the AI layer.
+Numbers are deliberately wide and always carry a disclaimer — this is a
+triage aid, never a certified estimate.
+
+## AI-drafted customer status updates (SMS/email)
+
+One-click AI draft per milestone (received, in-review, estimate-ready,
+parts-ordered, in-repair, quality-check, ready-for-pickup, picked-up,
+insurance-pending) that staff review/edit before sending. Prefers SMS when
+the customer has a phone on file, falls back to email otherwise. Every send
+(successful, previewed, or failed) is logged to a full audit trail.
+```bash
+# 1. Draft (returns text, does not send)
+curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/status-updates/draft \
+  -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"milestone":"in_repair"}'
+
+# 2. Send the (possibly edited) message
+curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/status-updates \
+  -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"milestone":"in_repair","message":"Your vehicle is now in repair!"}'
+
+# Full audit log (status updates + adjuster emails) for a submission
+curl http://localhost:3000/v1/dashboard/submissions/:id/communications -H 'Authorization: Bearer <token>'
+```
+**SMS backend is auto-selected:** with `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN`
++ `TWILIO_FROM_NUMBER` set, real SMS is sent via Twilio; otherwise messages are
+logged as a "preview" (zero telecom setup needed for local dev/testing).
+
+## AI-drafted adjuster follow-up emails
+
+Automates one of the most tedious recurring front-desk tasks: chasing an
+insurance adjuster for a claim-status update. One click drafts a
+professional email pre-filled with the claim #, policy #, insurer, adjuster
+name, and vehicle info already collected at intake.
+```bash
+curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/adjuster-email/draft -H 'Authorization: Bearer <token>'
+curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/adjuster-email/send \
+  -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"to":"adjuster@insurer.com","subject":"...","body":"..."}'
+```
+
+## Smart Queue — shop-wide ranked worklist
+
+Ranks every active submission by what actually needs attention right now —
+combining AI-assessed priority, missing-info count, and how long it's sat
+untouched into one score — instead of a plain inbox sorted by date.
+Deterministic and instant (reuses each submission's cached AI triage, no
+extra AI call at read time).
+```bash
+curl http://localhost:3000/v1/dashboard/queue -H 'Authorization: Bearer <token>'
+```
+
 ## Scripts
 | Script | Purpose |
 |---|---|

@@ -108,6 +108,16 @@ model Submission {
   aiSummary            Json?
   aiSummaryGeneratedAt DateTime?
 
+  /// AI-generated damage severity/scope read from the damage photos +
+  /// description — a triage aid for staff, never a substitute for a
+  /// certified estimate. Regenerable; best-effort.
+  damageAssessment            Json?
+  damageAssessmentGeneratedAt DateTime?
+
+  /// Full audit log of customer status-update texts/emails and adjuster
+  /// follow-up emails sent for this submission.
+  communications CommunicationLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -139,6 +149,37 @@ model Attachment {
 
   @@index([submissionId])
 }
+
+/// Audit log of every customer status-update (SMS/email) and adjuster
+/// follow-up email sent for a submission — the "AI employee"'s paper trail,
+/// and the source of truth for the status-update history shown in the
+/// dashboard. `direction` is OUTBOUND today; INBOUND is reserved for when
+/// two-way SMS replies are ingested (Twilio webhook, later phase).
+model CommunicationLog {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  /// "sms" | "email"
+  channel String
+  /// "outbound" | "inbound"
+  direction String @default("outbound")
+  /// One of the shared StatusMilestone values, or null for adjuster emails.
+  milestone String?
+  /// Email only.
+  subject String?
+  body    String
+  /// True when an AI draft was used as-is (vs. staff writing/editing it).
+  aiDrafted Boolean @default(false)
+  /// "sent" | "failed" | "preview" (no real SMS/email provider configured).
+  status String
+
+  createdAt DateTime @default(now())
+
+  @@index([submissionId, createdAt])
+}
+
+
 
 
 

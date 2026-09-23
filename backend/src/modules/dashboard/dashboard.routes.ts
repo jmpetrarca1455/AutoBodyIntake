@@ -6,6 +6,8 @@ import {
   getShopSettings,
   updateShopSettings,
   runAiTriage,
+  runDamageAssessment,
+  getSmartQueue,
 } from './dashboard.service.js';
 
 /**
@@ -19,6 +21,11 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/dashboard/stats', async (request) => {
     return getStats(request.shopId!);
+  });
+
+  // Ranked, shop-wide worklist — see dashboard.service.ts `getSmartQueue`.
+  app.get('/dashboard/queue', async (request) => {
+    return getSmartQueue(request.shopId!);
   });
 
   app.get('/dashboard/submissions', async (request) => {
@@ -46,6 +53,15 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     return summary;
   });
 
+  // Generate (or regenerate) the AI damage assessment (severity/scope triage
+  // read from the damage photos) for a submission.
+  app.post('/dashboard/submissions/:id/damage-assessment', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const assessment = await runDamageAssessment(request.shopId!, id);
+    if (!assessment) return reply.notFound('Submission not found');
+    return assessment;
+  });
+
   // Full shop settings, including the shareable intake link/token — every
   // logged-in user (owner or staff) can view this; only owners can edit it.
   app.get('/dashboard/shop', async (request, reply) => {
@@ -65,6 +81,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 }
+
+
+
 
 
 

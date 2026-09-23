@@ -15,6 +15,12 @@ import type {
   ShopRole,
   CreateStaffInput,
   StaffMember,
+  DamageAssessment,
+  StatusMilestone,
+  StatusUpdateDraft,
+  AdjusterEmailDraft,
+  CommunicationLogEntry,
+  QueueItem,
 } from '@autobody/shared';
 import { documentKindForAttachmentKind } from '@autobody/shared';
 import { config } from './config';
@@ -32,6 +38,12 @@ export type {
   ShopRole,
   CreateStaffInput,
   StaffMember,
+  DamageAssessment,
+  StatusMilestone,
+  StatusUpdateDraft,
+  AdjusterEmailDraft,
+  CommunicationLogEntry,
+  QueueItem,
 };
 export { documentKindForAttachmentKind };
 
@@ -94,6 +106,7 @@ export interface SubmissionSummary {
 
 export interface SubmissionDetail extends SubmissionSummary {
   data: CreateIntakeInput;
+  damageAssessment: DamageAssessment | null;
 }
 
 export interface SubmissionListResponse {
@@ -260,7 +273,75 @@ export const api = {
   ): Promise<unknown> {
     return request('/v1/dashboard/shop', { method: 'PATCH', body: JSON.stringify(input) }, authToken);
   },
+
+  // ── Smart Queue (shop-wide ranked worklist) ───────────
+  getQueue(authToken: string): Promise<QueueItem[]> {
+    return request('/v1/dashboard/queue', undefined, authToken);
+  },
+
+  // ── AI damage assessment ───────────────────────────────
+  runDamageAssessment(authToken: string, submissionId: string): Promise<DamageAssessment> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/damage-assessment`,
+      { method: 'POST' },
+      authToken,
+    );
+  },
+
+  // ── Customer status updates (AI-drafted, SMS/email) ───
+  draftStatusUpdate(
+    authToken: string,
+    submissionId: string,
+    input: { milestone: StatusMilestone; customInstruction?: string },
+  ): Promise<StatusUpdateDraft> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/status-updates/draft`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  sendStatusUpdate(
+    authToken: string,
+    submissionId: string,
+    input: { milestone: StatusMilestone; message: string; channel?: 'sms' | 'email' },
+  ): Promise<CommunicationLogEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/status-updates`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  // ── Adjuster follow-up emails (AI-drafted) ─────────────
+  draftAdjusterEmail(authToken: string, submissionId: string): Promise<AdjusterEmailDraft> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/adjuster-email/draft`,
+      { method: 'POST' },
+      authToken,
+    );
+  },
+
+  sendAdjusterEmail(
+    authToken: string,
+    submissionId: string,
+    input: { to: string; subject: string; body: string },
+  ): Promise<CommunicationLogEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/adjuster-email/send`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  // ── Full communications audit log for a submission ────
+  listCommunications(authToken: string, submissionId: string): Promise<CommunicationLogEntry[]> {
+    return request(`/v1/dashboard/submissions/${submissionId}/communications`, undefined, authToken);
+  },
 };
+
+
+
 
 
 
