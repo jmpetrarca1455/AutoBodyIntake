@@ -118,6 +118,64 @@ export function PrimaryButton({
   );
 }
 
+/** A tappable module card for the homepage dashboard's navigation grid —
+ * an icon/emoji, a title, a short description, and an optional badge count
+ * (e.g. "3 outstanding parts"). */
+export function NavCard({
+  icon,
+  title,
+  description,
+  badge,
+  onPress,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  badge?: string | number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={navCardStyles.card} onPress={onPress}>
+      <View style={navCardStyles.iconRow}>
+        <Text style={navCardStyles.icon}>{icon}</Text>
+        {badge !== undefined && badge !== null && badge !== '' ? (
+          <View style={navCardStyles.badge}>
+            <Text style={navCardStyles.badgeText}>{badge}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={navCardStyles.title}>{title}</Text>
+      <Text style={navCardStyles.description}>{description}</Text>
+    </Pressable>
+  );
+}
+
+const navCardStyles = StyleSheet.create({
+  card: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 200,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  iconRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  icon: { fontSize: 26 },
+  badge: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  title: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 },
+  description: { fontSize: 12, color: colors.muted, lineHeight: 16 },
+});
+
 const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg },
   sectionTitle: {
@@ -184,6 +242,7 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
+
 
 
 

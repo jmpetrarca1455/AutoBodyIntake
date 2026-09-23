@@ -186,6 +186,9 @@ export const staffUpdateSubmissionSchema = z.object({
   rental: rentalSchema,
   claim: claimSchema,
   status: submissionStatus.optional(),
+  /** Scheduled drop-off/pickup appointment times (ISO datetime strings). */
+  dropoffScheduledAt: z.string().datetime().nullable().optional(),
+  pickupScheduledAt: z.string().datetime().nullable().optional(),
 });
 export type StaffUpdateSubmissionInput = z.infer<typeof staffUpdateSubmissionSchema>;
 
@@ -206,6 +209,7 @@ export interface CreatedSubmission {
   receivedAt: string;
   message: string;
 }
+
 
 
 

@@ -26,6 +26,16 @@ import type {
   RecipientType,
   LogCommunicationNoteInput,
   SendGenericEmailInput,
+  EstimateLineCategory,
+  CreateEstimateLineItemInput,
+  UpdateEstimateLineItemInput,
+  EstimateLineItemEntry,
+  EstimateResponse,
+  PartsOrderStatus,
+  CreatePartsOrderInput,
+  UpdatePartsOrderInput,
+  PartsOrderEntry,
+  PartsOrderWithSubmission,
 } from '@autobody/shared';
 import {
   documentKindForAttachmentKind,
@@ -33,6 +43,9 @@ import {
   SUBMISSION_STATUS_LABELS,
   RECIPIENT_TYPE_LABELS,
   submissionStatusValues,
+  ESTIMATE_CATEGORY_LABELS,
+  PARTS_ORDER_STATUS_LABELS,
+  partsOrderStatus,
 } from '@autobody/shared';
 import { config } from './config';
 
@@ -60,6 +73,16 @@ export type {
   RecipientType,
   LogCommunicationNoteInput,
   SendGenericEmailInput,
+  EstimateLineCategory,
+  CreateEstimateLineItemInput,
+  UpdateEstimateLineItemInput,
+  EstimateLineItemEntry,
+  EstimateResponse,
+  PartsOrderStatus,
+  CreatePartsOrderInput,
+  UpdatePartsOrderInput,
+  PartsOrderEntry,
+  PartsOrderWithSubmission,
 };
 export {
   documentKindForAttachmentKind,
@@ -67,6 +90,9 @@ export {
   SUBMISSION_STATUS_LABELS,
   RECIPIENT_TYPE_LABELS,
   submissionStatusValues,
+  ESTIMATE_CATEGORY_LABELS,
+  PARTS_ORDER_STATUS_LABELS,
+  partsOrderStatus,
 };
 
 export interface CreatedSubmission {
@@ -122,6 +148,8 @@ export interface SubmissionSummary {
   claimNumber: string | null;
   emailedAt: string | null;
   createdAt: string;
+  dropoffScheduledAt: string | null;
+  pickupScheduledAt: string | null;
   aiSummary: AiTriageSummary | null;
   attachments: AttachmentSummary[];
 }
@@ -134,6 +162,14 @@ export interface SubmissionDetail extends SubmissionSummary {
 export interface SubmissionListResponse {
   items: SubmissionSummary[];
   nextCursor: string | null;
+}
+
+export interface ShopReport {
+  statusBreakdown: Record<string, number>;
+  avgCycleTimeHours: number | null;
+  avgEstimateTotal: number | null;
+  outstandingPartsOrders: number;
+  last30DaysVolume: number;
 }
 
 // ── HTTP helpers ────────────────────────────────────────
@@ -457,7 +493,104 @@ export const api = {
       authToken,
     );
   },
+
+  // ── Line-item repair estimate ─────────────────────────
+  getEstimate(authToken: string, submissionId: string): Promise<EstimateResponse> {
+    return request(`/v1/dashboard/submissions/${submissionId}/estimate-lines`, undefined, authToken);
+  },
+
+  addEstimateLine(
+    authToken: string,
+    submissionId: string,
+    input: CreateEstimateLineItemInput,
+  ): Promise<EstimateLineItemEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/estimate-lines`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  updateEstimateLine(
+    authToken: string,
+    submissionId: string,
+    lineId: string,
+    input: UpdateEstimateLineItemInput,
+  ): Promise<EstimateLineItemEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/estimate-lines/${lineId}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  deleteEstimateLine(authToken: string, submissionId: string, lineId: string): Promise<{ deleted: boolean }> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/estimate-lines/${lineId}`,
+      { method: 'DELETE' },
+      authToken,
+    );
+  },
+
+  // ── Parts ordering/tracking ────────────────────────────
+  getPartsOrders(authToken: string, submissionId: string): Promise<PartsOrderEntry[]> {
+    return request(`/v1/dashboard/submissions/${submissionId}/parts-orders`, undefined, authToken);
+  },
+
+  /** Shop-wide view across every open repair order. */
+  getShopPartsOrders(authToken: string): Promise<PartsOrderWithSubmission[]> {
+    return request('/v1/dashboard/parts-orders', undefined, authToken);
+  },
+
+  addPartsOrder(
+    authToken: string,
+    submissionId: string,
+    input: CreatePartsOrderInput,
+  ): Promise<PartsOrderEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/parts-orders`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  updatePartsOrder(
+    authToken: string,
+    submissionId: string,
+    orderId: string,
+    input: UpdatePartsOrderInput,
+  ): Promise<PartsOrderEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/parts-orders/${orderId}`,
+      { method: 'PATCH', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  deletePartsOrder(authToken: string, submissionId: string, orderId: string): Promise<{ deleted: boolean }> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/parts-orders/${orderId}`,
+      { method: 'DELETE' },
+      authToken,
+    );
+  },
+
+  // ── Shop KPI reports ───────────────────────────────────
+  getReports(authToken: string): Promise<ShopReport> {
+    return request('/v1/dashboard/reports', undefined, authToken);
+  },
+
+  // ── Scheduling ─────────────────────────────────────────
+  getSchedule(authToken: string): Promise<SubmissionSummary[]> {
+    return request('/v1/dashboard/schedule', undefined, authToken);
+  },
 };
+
+
+
+
+
+
 
 
 

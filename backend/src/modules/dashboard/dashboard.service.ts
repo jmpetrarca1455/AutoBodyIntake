@@ -67,6 +67,22 @@ export async function getSubmission(shopId: string, submissionId: string) {
 }
 
 /**
+ * Every submission with a scheduled drop-off or pickup, soonest first —
+ * the shop-wide appointment view (CCC ONE's Scheduling module, scoped down
+ * to what an independent shop needs: just a sorted list, no bay/tech
+ * capacity planning yet).
+ */
+export async function getSchedule(shopId: string) {
+  return prisma.submission.findMany({
+    where: {
+      shopId,
+      OR: [{ dropoffScheduledAt: { not: null } }, { pickupScheduledAt: { not: null } }],
+    },
+    orderBy: [{ dropoffScheduledAt: 'asc' }, { pickupScheduledAt: 'asc' }],
+  });
+}
+
+/**
  * Staff "edit customer file" — shallow-merges the same field groups as the
  * customer-facing update (contact/insurance/license/vehicle/rental/claim)
  * and optionally moves the submission's lifecycle `status`. Also refreshes
@@ -101,6 +117,12 @@ export async function updateSubmission(
       customerPhone: merged.contact?.phone ?? null,
       vehicleInfo: buildVehicleSummary(merged.vehicle) ?? existing.vehicleInfo,
       claimNumber: merged.insurance?.claimNumber ?? existing.claimNumber,
+      ...(input.dropoffScheduledAt !== undefined
+        ? { dropoffScheduledAt: input.dropoffScheduledAt ? new Date(input.dropoffScheduledAt) : null }
+        : {}),
+      ...(input.pickupScheduledAt !== undefined
+        ? { pickupScheduledAt: input.pickupScheduledAt ? new Date(input.pickupScheduledAt) : null }
+        : {}),
     },
     include: { attachments: true },
   });
@@ -302,6 +324,68 @@ export async function getSmartQueue(shopId: string): Promise<QueueItem[]> {
 
   return items.sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Basic shop KPI report — cycle time, status breakdown, average estimate
+ * value, and outstanding parts orders. All computed from data we already
+ * store; no extra tracking columns needed for this first cut (CCC ONE's
+ * "Insights"/analytics module, scoped down to what a small shop actually
+ * looks at day to day).
+ */
+export interface ShopReport {
+  statusBreakdown: Record<string, number>;
+  avgCycleTimeHours: number | null;
+  avgEstimateTotal: number | null;
+  outstandingPartsOrders: number;
+  last30DaysVolume: number;
+}
+
+export async function getShopReports(shopId: string): Promise<ShopReport> {
+  const submissions = await prisma.submission.findMany({
+    where: { shopId },
+    select: { status: true, createdAt: true, emailedAt: true },
+  });
+
+  const statusBreakdown: Record<string, number> = {};
+  let cycleTimeSum = 0;
+  let cycleTimeCount = 0;
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  let last30DaysVolume = 0;
+
+  for (const s of submissions) {
+    statusBreakdown[s.status] = (statusBreakdown[s.status] ?? 0) + 1;
+    if (s.emailedAt) {
+      cycleTimeSum += (s.emailedAt.getTime() - s.createdAt.getTime()) / (60 * 60 * 1000);
+      cycleTimeCount += 1;
+    }
+    if (s.createdAt >= thirtyDaysAgo) last30DaysVolume += 1;
+  }
+
+  const lineTotals = await prisma.estimateLineItem.groupBy({
+    by: ['submissionId'],
+    where: { submission: { shopId } },
+    _sum: { total: true },
+  });
+  const avgEstimateTotal =
+    lineTotals.length > 0
+      ? lineTotals.reduce((sum, row) => sum + (row._sum.total ?? 0), 0) / lineTotals.length
+      : null;
+
+  const outstandingPartsOrders = await prisma.partsOrder.count({
+    where: { submission: { shopId }, status: { notIn: ['INSTALLED', 'RETURNED'] } },
+  });
+
+  return {
+    statusBreakdown,
+    avgCycleTimeHours: cycleTimeCount > 0 ? Math.round((cycleTimeSum / cycleTimeCount) * 10) / 10 : null,
+    avgEstimateTotal: avgEstimateTotal !== null ? Math.round(avgEstimateTotal * 100) / 100 : null,
+    outstandingPartsOrders,
+    last30DaysVolume,
+  };
+}
+
+
+
 
 
 

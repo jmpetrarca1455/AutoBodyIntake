@@ -5,6 +5,8 @@ import { intakeRoutes } from './intake/intake.routes.js';
 import { authRoutes } from './auth/auth.routes.js';
 import { dashboardRoutes } from './dashboard/dashboard.routes.js';
 import { communicationsRoutes } from './communications/communications.routes.js';
+import { estimateLinesRoutes } from './estimates/estimate-lines.routes.js';
+import { partsOrdersRoutes } from './parts-orders/parts-orders.routes.js';
 import { webhooksRoutes } from './webhooks/webhooks.routes.js';
 import { legalRoutes } from './legal/legal.routes.js';
 
@@ -30,9 +32,13 @@ export const moduleRegistry: Array<{
   { prefix: '/v1', register: authRoutes },
   { prefix: '/v1', register: dashboardRoutes },
   { prefix: '/v1', register: communicationsRoutes },
+  { prefix: '/v1', register: estimateLinesRoutes },
+  { prefix: '/v1', register: partsOrdersRoutes },
   { prefix: '/v1', register: webhooksRoutes },
   { prefix: '/', register: legalRoutes },
 ];
+
+
 
 
 

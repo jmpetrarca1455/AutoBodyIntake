@@ -10,6 +10,8 @@ import {
   runAiTriage,
   runDamageAssessment,
   getSmartQueue,
+  getShopReports,
+  getSchedule,
   uploadStaffAttachment,
   deleteAttachment,
 } from './dashboard.service.js';
@@ -31,6 +33,18 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   // Ranked, shop-wide worklist — see dashboard.service.ts `getSmartQueue`.
   app.get('/dashboard/queue', async (request) => {
     return getSmartQueue(request.shopId!);
+  });
+
+  // Basic shop KPI report — cycle time, status breakdown, avg estimate
+  // value, outstanding parts orders. See dashboard.service.ts `getShopReports`.
+  app.get('/dashboard/reports', async (request) => {
+    return getShopReports(request.shopId!);
+  });
+
+  // Shop-wide scheduling view — every submission with a scheduled
+  // drop-off/pickup, soonest first.
+  app.get('/dashboard/schedule', async (request) => {
+    return getSchedule(request.shopId!);
   });
 
   app.get('/dashboard/submissions', async (request) => {
@@ -166,6 +180,10 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
+
+
+
+
 
 
 

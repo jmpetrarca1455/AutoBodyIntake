@@ -19,9 +19,13 @@ import {
   RECIPIENT_TYPE_LABELS,
   SUBMISSION_STATUS_LABELS,
   submissionStatusValues,
+  ESTIMATE_CATEGORY_LABELS,
+  PARTS_ORDER_STATUS_LABELS,
   type AttachmentKind,
   type RecipientType,
   type StatusMilestone,
+  type EstimateLineCategory,
+  type PartsOrderStatus,
 } from '@autobody/shared';
 import { useAuth } from '../../src/auth';
 import {
@@ -30,6 +34,8 @@ import {
   type IntakePayload,
   type LocalFile,
   type SubmissionDetail,
+  type EstimateLineItemEntry,
+  type PartsOrderEntry,
 } from '../../src/api';
 import { ChoiceRow, Field, PrimaryButton, Section } from '../../src/components/ui';
 import { colors, radius, spacing } from '../../src/theme';
@@ -90,6 +96,25 @@ const NOTE_RECIPIENT_OPTIONS = (Object.keys(RECIPIENT_TYPE_LABELS) as RecipientT
 
 const GENERIC_EMAIL_RECIPIENT_OPTIONS = NOTE_RECIPIENT_OPTIONS.filter((o) => o.value !== 'customer');
 
+const ESTIMATE_CATEGORY_OPTIONS = (Object.keys(ESTIMATE_CATEGORY_LABELS) as EstimateLineCategory[]).map((value) => ({
+  label: ESTIMATE_CATEGORY_LABELS[value],
+  value,
+}));
+
+const PARTS_ORDER_STATUS_OPTIONS = (Object.keys(PARTS_ORDER_STATUS_LABELS) as PartsOrderStatus[]).map((value) => ({
+  label: PARTS_ORDER_STATUS_LABELS[value],
+  value,
+}));
+
+const PARTS_STATUS_COLORS: Record<string, string> = {
+  NEEDED: '#64748b',
+  ORDERED: '#0369a1',
+  BACKORDERED: '#b91c1c',
+  RECEIVED: '#15803d',
+  INSTALLED: '#15803d',
+  RETURNED: '#64748b',
+};
+
 type EditableData = {
   contact: NonNullable<IntakePayload['contact']>;
   insurance: NonNullable<IntakePayload['insurance']>;
@@ -116,6 +141,23 @@ async function toLocalFile(asset: ImagePicker.ImagePickerAsset): Promise<LocalFi
   const ext = asset.mimeType?.split('/')[1] ?? extFromUri ?? 'jpg';
   const mimeType = asset.mimeType ?? `image/${ext === 'jpg' ? 'jpeg' : ext}`;
   return { uri, name: asset.fileName ?? `document-${Date.now()}.${ext}`, mimeType };
+}
+
+/** ISO string → "YYYY-MM-DDTHH:mm" for editing in a plain text field. */
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** "YYYY-MM-DDTHH:mm" (or empty) → ISO string or null, for saving. */
+function fromDatetimeLocal(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 /** Derive the editable form shape from a loaded/just-saved submission. */
@@ -237,16 +279,45 @@ export default function SubmissionDetailScreen() {
   const [uploadKind, setUploadKind] = useState<AttachmentKind>('other');
   const [uploading, setUploading] = useState(false);
 
+  // Scheduling (drop-off/pickup) — plain datetime-local-ish text fields
+  const [dropoffScheduledAt, setDropoffScheduledAt] = useState('');
+  const [pickupScheduledAt, setPickupScheduledAt] = useState('');
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleResult, setScheduleResult] = useState<string | null>(null);
+
+  // Repair estimate (line items)
+  const [estimateLines, setEstimateLines] = useState<EstimateLineItemEntry[]>([]);
+  const [newLineCategory, setNewLineCategory] = useState<EstimateLineCategory>('PARTS');
+  const [newLineDescription, setNewLineDescription] = useState('');
+  const [newLinePartNumber, setNewLinePartNumber] = useState('');
+  const [newLineQuantity, setNewLineQuantity] = useState('1');
+  const [newLineUnitPrice, setNewLineUnitPrice] = useState('');
+  const [newLineLaborHours, setNewLineLaborHours] = useState('');
+  const [addingLine, setAddingLine] = useState(false);
+
+  // Parts orders
+  const [partsOrders, setPartsOrders] = useState<PartsOrderEntry[]>([]);
+  const [newPartDescription, setNewPartDescription] = useState('');
+  const [newPartNumber, setNewPartNumber] = useState('');
+  const [newPartSupplier, setNewPartSupplier] = useState('');
+  const [addingPart, setAddingPart] = useState(false);
+
   const load = useCallback(async () => {
     if (!token || !id) return;
-    const [detail, log] = await Promise.all([
+    const [detail, log, estimate, parts] = await Promise.all([
       api.getSubmissionDetail(token, id),
       api.listCommunications(token, id).catch(() => []),
+      api.getEstimate(token, id).catch(() => ({ lines: [], totals: { byCategory: {}, grandTotal: 0 } }) as never),
+      api.getPartsOrders(token, id).catch(() => []),
     ]);
     setSubmission(detail);
     setComms(log);
     setStatus(detail.status);
     setForm(buildForm(detail));
+    setEstimateLines(estimate.lines);
+    setPartsOrders(parts);
+    setDropoffScheduledAt(toDatetimeLocal(detail.dropoffScheduledAt));
+    setPickupScheduledAt(toDatetimeLocal(detail.pickupScheduledAt));
   }, [token, id]);
 
   useEffect(() => {
@@ -321,6 +392,101 @@ export default function SubmissionDetailScreen() {
     } finally {
       setChangingStatus(false);
     }
+  }
+
+  /** Save the drop-off/pickup schedule — independent mini-form, same
+   * "saves immediately" pattern as the status dropdown. */
+  async function saveSchedule() {
+    if (!token || !id) return;
+    setSavingSchedule(true);
+    setScheduleResult(null);
+    try {
+      const updated = await api.updateSubmissionStaff(token, id, {
+        dropoffScheduledAt: fromDatetimeLocal(dropoffScheduledAt),
+        pickupScheduledAt: fromDatetimeLocal(pickupScheduledAt),
+      });
+      setSubmission(updated);
+      setScheduleResult('Saved!');
+    } catch (err) {
+      setScheduleResult(err instanceof Error ? err.message : 'Failed to save.');
+    } finally {
+      setSavingSchedule(false);
+    }
+  }
+
+  // ── Repair estimate (line items) ────────────────────────
+  async function addEstimateLine() {
+    if (!token || !id || !newLineDescription.trim()) return;
+    setAddingLine(true);
+    try {
+      const quantity = Number(newLineQuantity) || 1;
+      const unitPrice = Number(newLineUnitPrice) || 0;
+      const laborHours = newLineLaborHours.trim() ? Number(newLineLaborHours) : undefined;
+      const line = await api.addEstimateLine(token, id, {
+        category: newLineCategory,
+        description: newLineDescription.trim(),
+        partNumber: newLinePartNumber.trim() || undefined,
+        quantity,
+        unitPrice,
+        laborHours,
+      });
+      setEstimateLines((prev) => [...prev, line]);
+      setNewLineDescription('');
+      setNewLinePartNumber('');
+      setNewLineQuantity('1');
+      setNewLineUnitPrice('');
+      setNewLineLaborHours('');
+    } catch (err) {
+      Alert.alert('Could not add line', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setAddingLine(false);
+    }
+  }
+
+  async function removeEstimateLine(lineId: string) {
+    if (!token || !id) return;
+    await api.deleteEstimateLine(token, id, lineId);
+    setEstimateLines((prev) => prev.filter((l) => l.id !== lineId));
+  }
+
+  const estimateTotals = useMemo(() => {
+    const byCategory: Record<string, number> = { PARTS: 0, LABOR: 0, PAINT_MATERIALS: 0, SUBLET: 0, MISC: 0 };
+    for (const line of estimateLines) byCategory[line.category] = (byCategory[line.category] ?? 0) + line.total;
+    const grandTotal = Object.values(byCategory).reduce((sum, v) => sum + v, 0);
+    return { byCategory, grandTotal };
+  }, [estimateLines]);
+
+  // ── Parts orders ─────────────────────────────────────────
+  async function addPartsOrder() {
+    if (!token || !id || !newPartDescription.trim()) return;
+    setAddingPart(true);
+    try {
+      const order = await api.addPartsOrder(token, id, {
+        description: newPartDescription.trim(),
+        partNumber: newPartNumber.trim() || undefined,
+        supplier: newPartSupplier.trim() || undefined,
+      });
+      setPartsOrders((prev) => [...prev, order]);
+      setNewPartDescription('');
+      setNewPartNumber('');
+      setNewPartSupplier('');
+    } catch (err) {
+      Alert.alert('Could not add part', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setAddingPart(false);
+    }
+  }
+
+  async function changePartsOrderStatus(orderId: string, nextStatus: PartsOrderStatus) {
+    if (!token || !id) return;
+    const updated = await api.updatePartsOrder(token, id, orderId, { status: nextStatus });
+    setPartsOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
+  }
+
+  async function removePartsOrder(orderId: string) {
+    if (!token || !id) return;
+    await api.deletePartsOrder(token, id, orderId);
+    setPartsOrders((prev) => prev.filter((o) => o.id !== orderId));
   }
 
   async function regenerate() {
@@ -1066,6 +1232,188 @@ export default function SubmissionDetailScreen() {
         </View>
       </Section>
 
+      <Section title="Scheduling">
+        <View style={styles.groupGrid}>
+          <GroupCard title="Appointments">
+            <GridItem>
+              <Field
+                label="Drop-off (YYYY-MM-DDTHH:mm)"
+                value={dropoffScheduledAt}
+                placeholder="2026-09-25T09:00"
+                onChangeText={setDropoffScheduledAt}
+              />
+            </GridItem>
+            <GridItem>
+              <Field
+                label="Pickup (YYYY-MM-DDTHH:mm)"
+                value={pickupScheduledAt}
+                placeholder="2026-10-01T16:00"
+                onChangeText={setPickupScheduledAt}
+              />
+            </GridItem>
+          </GroupCard>
+        </View>
+        <PrimaryButton title="Save schedule" loading={savingSchedule} onPress={saveSchedule} />
+        {scheduleResult ? <Text style={styles.resultText}>{scheduleResult}</Text> : null}
+      </Section>
+
+      <Section title={`Repair estimate ($${estimateTotals.grandTotal.toLocaleString()})`}>
+        <View style={styles.groupGrid}>
+          {ESTIMATE_CATEGORY_OPTIONS.map((cat) => (
+            <View key={cat.value} style={styles.estimateTotalCard}>
+              <Text style={styles.estimateTotalLabel}>{cat.label}</Text>
+              <Text style={styles.estimateTotalValue}>
+                ${(estimateTotals.byCategory[cat.value] ?? 0).toLocaleString()}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {estimateLines.length > 0 && (
+          <View style={{ marginTop: spacing.md }}>
+            {estimateLines.map((line) => (
+              <View key={line.id} style={styles.lineRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lineDescription}>{line.description}</Text>
+                  <Text style={styles.tiny}>
+                    {ESTIMATE_CATEGORY_LABELS[line.category]}
+                    {line.partNumber ? ` · #${line.partNumber}` : ''}
+                    {line.category === 'LABOR'
+                      ? ` · ${line.laborHours ?? 0} hrs @ $${line.unitPrice}/hr`
+                      : ` · ${line.quantity} × $${line.unitPrice}`}
+                  </Text>
+                </View>
+                <Text style={styles.lineTotal}>${line.total.toLocaleString()}</Text>
+                <Pressable onPress={() => removeEstimateLine(line.id)}>
+                  <Text style={[styles.linkText, { color: colors.danger, marginLeft: spacing.sm }]}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <Text style={styles.groupHeader}>Add a line</Text>
+        <View style={styles.groupGrid}>
+          <View style={styles.groupCard}>
+            <View style={styles.fieldGrid}>
+              <GridItem>
+                <ChoiceRow
+                  label="Category"
+                  value={newLineCategory}
+                  onChange={setNewLineCategory}
+                  options={ESTIMATE_CATEGORY_OPTIONS}
+                />
+              </GridItem>
+              <GridItem full>
+                <Field label="Description" value={newLineDescription} onChangeText={setNewLineDescription} />
+              </GridItem>
+              <GridItem>
+                <Field label="Part # (optional)" value={newLinePartNumber} onChangeText={setNewLinePartNumber} />
+              </GridItem>
+              {newLineCategory === 'LABOR' ? (
+                <>
+                  <GridItem>
+                    <Field
+                      label="Labor hours"
+                      value={newLineLaborHours}
+                      keyboardType="decimal-pad"
+                      onChangeText={setNewLineLaborHours}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Rate ($/hr)"
+                      value={newLineUnitPrice}
+                      keyboardType="decimal-pad"
+                      onChangeText={setNewLineUnitPrice}
+                    />
+                  </GridItem>
+                </>
+              ) : (
+                <>
+                  <GridItem>
+                    <Field
+                      label="Quantity"
+                      value={newLineQuantity}
+                      keyboardType="decimal-pad"
+                      onChangeText={setNewLineQuantity}
+                    />
+                  </GridItem>
+                  <GridItem>
+                    <Field
+                      label="Unit price ($)"
+                      value={newLineUnitPrice}
+                      keyboardType="decimal-pad"
+                      onChangeText={setNewLineUnitPrice}
+                    />
+                  </GridItem>
+                </>
+              )}
+            </View>
+            <View style={{ marginTop: spacing.sm }}>
+              <PrimaryButton
+                title="Add line"
+                loading={addingLine}
+                disabled={!newLineDescription.trim()}
+                onPress={addEstimateLine}
+              />
+            </View>
+          </View>
+        </View>
+      </Section>
+
+      <Section title={`Parts orders (${partsOrders.length})`}>
+        {partsOrders.length === 0 ? (
+          <Text style={styles.muted}>No parts on order yet.</Text>
+        ) : (
+          <View style={styles.groupGrid}>
+            {partsOrders.map((order) => (
+              <View key={order.id} style={styles.groupCard}>
+                <Text style={styles.groupCardTitle}>{order.description}</Text>
+                {order.partNumber ? <Text style={styles.tiny}>Part #: {order.partNumber}</Text> : null}
+                {order.supplier ? <Text style={styles.tiny}>Supplier: {order.supplier}</Text> : null}
+                <View style={{ marginTop: spacing.sm }}>
+                  <ChoiceRow
+                    label="Status"
+                    value={order.status}
+                    onChange={(v) => changePartsOrderStatus(order.id, v)}
+                    options={PARTS_ORDER_STATUS_OPTIONS}
+                  />
+                </View>
+                <Pressable onPress={() => removePartsOrder(order.id)}>
+                  <Text style={[styles.linkText, { color: colors.danger }]}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <Text style={styles.groupHeader}>Add a part</Text>
+        <View style={styles.groupGrid}>
+          <View style={styles.groupCard}>
+            <View style={styles.fieldGrid}>
+              <GridItem full>
+                <Field label="Description" value={newPartDescription} onChangeText={setNewPartDescription} />
+              </GridItem>
+              <GridItem>
+                <Field label="Part # (optional)" value={newPartNumber} onChangeText={setNewPartNumber} />
+              </GridItem>
+              <GridItem>
+                <Field label="Supplier (optional)" value={newPartSupplier} onChangeText={setNewPartSupplier} />
+              </GridItem>
+            </View>
+            <View style={{ marginTop: spacing.sm }}>
+              <PrimaryButton
+                title="Add part"
+                loading={addingPart}
+                disabled={!newPartDescription.trim()}
+                onPress={addPartsOrder}
+              />
+            </View>
+          </View>
+        </View>
+      </Section>
+
       <Section title="Send status update to customer">
         <ChoiceRow label="Milestone" value={milestone} onChange={setMilestone} options={MILESTONE_OPTIONS} />
         <PrimaryButton title="AI-draft message" loading={drafting} onPress={draftUpdate} />
@@ -1448,7 +1796,36 @@ const styles = StyleSheet.create({
   },
   smallButtonText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   buttonDisabled: { opacity: 0.5 },
+  estimateTotalCard: {
+    flexGrow: 1,
+    flexBasis: 150,
+    minWidth: 130,
+    backgroundColor: colors.inputBg,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+  },
+  estimateTotalLabel: { fontSize: 11, color: colors.muted, fontWeight: '600' },
+  estimateTotalValue: { fontSize: 18, fontWeight: '800', color: colors.primary, marginTop: 2 },
+  lineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  lineDescription: { fontSize: 14, fontWeight: '700', color: colors.text },
+  lineTotal: { fontSize: 14, fontWeight: '800', color: colors.text },
 });
+
+
+
+
+
+
+
+
 
 
 

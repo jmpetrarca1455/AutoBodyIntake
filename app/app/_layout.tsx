@@ -21,12 +21,18 @@ export default function RootLayout() {
         <Stack.Screen name="portal/signup" options={{ title: 'Sign Up Your Shop' }} />
         <Stack.Screen name="portal/index" options={{ title: 'Dashboard' }} />
         <Stack.Screen name="portal/queue" options={{ title: "Today's Priorities" }} />
+        <Stack.Screen name="portal/workflow" options={{ title: 'Repair Workflow' }} />
+        <Stack.Screen name="portal/customers" options={{ title: 'Customers' }} />
+        <Stack.Screen name="portal/parts" options={{ title: 'Parts Orders' }} />
+        <Stack.Screen name="portal/schedule" options={{ title: 'Scheduling' }} />
+        <Stack.Screen name="portal/reports" options={{ title: 'Reports' }} />
         <Stack.Screen name="portal/settings" options={{ title: 'Shop Settings' }} />
         <Stack.Screen name="portal/[id]" options={{ title: 'Submission' }} />
       </Stack>
     </AuthProvider>
   );
 }
+
 
 
 
