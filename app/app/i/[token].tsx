@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
 import { api, documentKindForAttachmentKind, type IntakePayload, type PublicShop } from '../../src/api';
 import { PhotoPicker, type PickedPhoto } from '../../src/components/PhotoPicker';
 import { ChoiceRow, Checkbox, Field, PrimaryButton, Section } from '../../src/components/ui';
+import { config } from '../../src/config';
 import { colors, spacing } from '../../src/theme';
 
 type VehicleDraft = {
@@ -388,6 +390,18 @@ export default function IntakeForm() {
 
         {progress ? <Text style={styles.progress}>{progress}</Text> : null}
 
+        <Text style={styles.legal}>
+          By submitting, you agree to our{' '}
+          <Text style={styles.link} onPress={() => Linking.openURL(`${config.apiBaseUrl}/legal/terms`)}>
+            Terms of Service
+          </Text>{' '}
+          and{' '}
+          <Text style={styles.link} onPress={() => Linking.openURL(`${config.apiBaseUrl}/legal/privacy`)}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+
         <PrimaryButton
           title="Submit to shop"
           loading={submitting}
@@ -408,7 +422,11 @@ const styles = StyleSheet.create({
   errorTitle: { fontSize: 20, fontWeight: '800', color: colors.danger },
   successMark: { fontSize: 56, color: colors.success },
   successTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
+  legal: { fontSize: 12, color: colors.muted, lineHeight: 18, textAlign: 'center', marginBottom: spacing.sm },
+  link: { color: colors.text, fontWeight: '600', textDecorationLine: 'underline' },
 });
+
+
 
 
 

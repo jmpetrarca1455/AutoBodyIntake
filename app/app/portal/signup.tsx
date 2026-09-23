@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text } from 'react-native';
 import { useAuth } from '../../src/auth';
 import { Field, PrimaryButton } from '../../src/components/ui';
+import { config } from '../../src/config';
 import { colors, spacing } from '../../src/theme';
 
 export default function PortalSignup() {
@@ -66,6 +67,17 @@ export default function PortalSignup() {
         placeholder="••••••••"
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Text style={styles.legal}>
+        By creating a shop account, you agree to our{' '}
+        <Text style={styles.link} onPress={() => Linking.openURL(`${config.apiBaseUrl}/legal/terms`)}>
+          Terms of Service
+        </Text>{' '}
+        and{' '}
+        <Text style={styles.link} onPress={() => Linking.openURL(`${config.apiBaseUrl}/legal/privacy`)}>
+          Privacy Policy
+        </Text>
+        .
+      </Text>
       <PrimaryButton title="Create shop account" loading={loading} onPress={submit} disabled={!canSubmit} />
     </ScrollView>
   );
@@ -76,5 +88,9 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '800', color: colors.text },
   subtitle: { fontSize: 14, color: colors.muted, marginBottom: spacing.sm, lineHeight: 20 },
   error: { color: colors.danger, marginBottom: spacing.sm },
+  legal: { fontSize: 12, color: colors.muted, lineHeight: 18 },
+  link: { color: colors.text, fontWeight: '600', textDecorationLine: 'underline' },
 });
+
+
 

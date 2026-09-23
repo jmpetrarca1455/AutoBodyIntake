@@ -6,6 +6,7 @@ import { authRoutes } from './auth/auth.routes.js';
 import { dashboardRoutes } from './dashboard/dashboard.routes.js';
 import { communicationsRoutes } from './communications/communications.routes.js';
 import { webhooksRoutes } from './webhooks/webhooks.routes.js';
+import { legalRoutes } from './legal/legal.routes.js';
 
 /**
  * Module registry — the ONE place a new feature module gets wired in.
@@ -30,7 +31,10 @@ export const moduleRegistry: Array<{
   { prefix: '/v1', register: dashboardRoutes },
   { prefix: '/v1', register: communicationsRoutes },
   { prefix: '/v1', register: webhooksRoutes },
+  { prefix: '/', register: legalRoutes },
 ];
+
+
 
 
 

@@ -222,6 +222,21 @@ most recent submission with that `customerPhone` and appends the reply to
 that submission's communications log (`direction: "inbound"`), visible
 right alongside the outbound history in the dashboard.
 
+## Legal documents (Terms of Service / Privacy Policy)
+
+Plain-text (not HTML — zero styling needed, trivially linkable) documents
+served with no auth and no `/v1` prefix:
+```
+GET /legal/terms
+GET /legal/privacy
+```
+Content lives in `src/modules/legal/legal.content.ts` — a solid starting
+template covering this product's actual data flows (PII collection, TCPA/
+SMS consent, AI processing, third-party subprocessors), but it is **not**
+a substitute for attorney review before public launch. Update
+`COMPANY_NAME`/`CONTACT_EMAIL`/`GOVERNING_LAW` at the top of that file
+first. Linked from the shop signup screen and the customer intake form.
+
 ## Automated adjuster follow-ups
 
 A background sweep (off by default — opt in with

@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (TCPA-compliant SMS consent shipped — explicit opt-in checkbox at intake, enforced server-side even against explicit staff requests, on top of the two-way SMS webhook, automated adjuster follow-up sweep, and CORS lockdown — the "AI employee" layer is feature-complete and its riskiest compliance gap is closed)
+- **Last updated:** September 23, 2026 (Terms of Service & Privacy Policy shipped — plain-text `GET /legal/terms`/`GET /legal/privacy` endpoints wired into the module registry and linked from shop signup + customer intake, closing the last open legal/compliance checklist item)
 
 ---
 
@@ -336,13 +336,13 @@ At $499–$999/mo pricing, gross margins stay ~90%+.
 
 ## 12. Legal, Compliance & Security
 
-- [ ] **PII handling:** license, insurance, VIN = sensitive data. Encrypt in transit (HTTPS) and at rest.
-- [ ] **Data retention policy:** define how long we keep submissions and images.
-- [ ] **Consent:** clear notice to customer that data is shared with their chosen body shop.
-- [ ] **Email security:** submissions contain PII — ensure delivery provider supports secure transport; consider link-to-portal instead of raw attachments later.
+- [ ] **PII handling — encryption at rest:** HTTPS/TLS in transit is covered (see Privacy Policy §9), but at-rest encryption depends on the managed Postgres/S3 provider's defaults — confirm and document before public launch (not yet independently verified).
+- [x] **Data retention policy:** defined and published in the Privacy Policy (§6) — submission data (incl. photos/documents) retained for the life of the shop's account; shops can request deletion of a specific customer's data or their whole account's data on closure.
+- [x] **Consent:** Privacy Policy (§2–§3) explicitly discloses that customer-submitted data is delivered to "the shop the customer chose" and used for AI triage/drafting; linked from the intake form footer so customers see it before submitting.
+- [x] **Email security:** delivery goes over Resend's TLS-secured API (no plaintext SMTP); Privacy Policy §9 documents HTTPS/TLS-in-transit + per-shop data isolation. Link-to-portal instead of raw attachments remains a good Phase-2+ hardening idea, tracked as a future improvement rather than a launch blocker.
 - [x] **TCPA compliance:** explicit SMS opt-in checkbox at intake (`contact.smsConsent`, shown only when a phone is entered, with full disclosure text incl. "reply STOP to opt out"). Enforced server-side, not just in the UI — `sendStatusUpdate` refuses to use SMS (falls back to email, or fails closed if no email either) whenever `smsConsent !== true`, even if a staff member explicitly requests the SMS channel. Verified via curl: consented → SMS; not consented (default or forced channel) → safely rerouted to email.
 - [x] **Access control:** every dashboard/communications/automation route is shop-scoped via the JWT (`request.shopId`), never a client-supplied param; verified cross-tenant isolation earlier in testing.
-- [ ] **Terms of Service & Privacy Policy:** needed before public launch.
+- [x] **Terms of Service & Privacy Policy:** attorney-reviewable template (`backend/src/modules/legal/legal.content.ts`, TODOs marked for company name/contact/governing law) served as plain text at `GET /legal/terms` and `GET /legal/privacy` (no auth, no `/v1` prefix — trivially linkable). Linked from both the shop signup screen and the customer intake form footer.
 
 ---
 

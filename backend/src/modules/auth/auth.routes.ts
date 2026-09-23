@@ -31,31 +31,43 @@ function toStaffMember(user: ShopUser) {
  * owner-only staff management (invite/list/deactivate team logins).
  */
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/auth/signup', async (request, reply) => {
-    const parsed = signupSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.badRequest(parsed.error.issues.map((i) => i.message).join('; '));
-    }
+  app.post(
+    '/auth/signup',
+    // Stricter than the global default — signup spam/abuse protection.
+    { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
+    async (request, reply) => {
+      const parsed = signupSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.badRequest(parsed.error.issues.map((i) => i.message).join('; '));
+      }
 
-    const shop = await signupShop(parsed.data);
-    const token = app.jwt.sign({ shopId: shop.id, role: 'OWNER' });
-    return reply.code(201).send({ token, shop: toAuthShop(shop), role: 'OWNER' });
-  });
+      const shop = await signupShop(parsed.data);
+      const token = app.jwt.sign({ shopId: shop.id, role: 'OWNER' });
+      return reply.code(201).send({ token, shop: toAuthShop(shop), role: 'OWNER' });
+    },
+  );
 
-  app.post('/auth/login', async (request, reply) => {
-    const parsed = loginSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.badRequest('Email and password are required.');
-    }
+  app.post(
+    '/auth/login',
+    // Brute-force / credential-stuffing protection — much tighter than the
+    // global default. Keyed by IP (see 50-rate-limit.plugin.ts), so a
+    // legitimate user mistyping their password a few times is unaffected.
+    { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (request, reply) => {
+      const parsed = loginSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.badRequest('Email and password are required.');
+      }
 
-    const result = await verifyLogin(parsed.data);
-    const token = app.jwt.sign(
-      result.role === 'OWNER'
-        ? { shopId: result.shop.id, role: 'OWNER' }
-        : { shopId: result.shop.id, role: 'STAFF', userId: result.userId },
-    );
-    return reply.send({ token, shop: toAuthShop(result.shop), role: result.role });
-  });
+      const result = await verifyLogin(parsed.data);
+      const token = app.jwt.sign(
+        result.role === 'OWNER'
+          ? { shopId: result.shop.id, role: 'OWNER' }
+          : { shopId: result.shop.id, role: 'STAFF', userId: result.userId },
+      );
+      return reply.send({ token, shop: toAuthShop(result.shop), role: result.role });
+    },
+  );
 
   app.get('/auth/me', { preHandler: [app.authenticate] }, async (request, reply) => {
     const shop = await getShopForAuth(request.shopId!);
@@ -98,5 +110,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
+
 
 
