@@ -3,12 +3,16 @@ import {
   draftStatusUpdateSchema,
   sendStatusUpdateSchema,
   sendAdjusterEmailSchema,
+  logCommunicationNoteSchema,
+  sendGenericEmailSchema,
 } from '@autobody/shared';
 import {
   draftAdjusterEmailForSubmission,
   draftStatusUpdateForSubmission,
   listCommunications,
+  logCommunicationNote,
   sendAdjusterEmail,
+  sendGenericEmail,
   sendStatusUpdate,
 } from './communications.service.js';
 
@@ -71,5 +75,33 @@ export async function communicationsRoutes(app: FastifyInstance): Promise<void> 
     if (!entry) return reply.notFound('Submission not found');
     return entry;
   });
+
+  // Manually log a communication that happened outside the portal (a call,
+  // an in-person conversation, etc.) — no send, just an audit-trail entry.
+  app.post('/dashboard/submissions/:id/communications/note', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = logCommunicationNoteSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.badRequest(body.error.issues.map((i) => i.message).join('; '));
+    }
+    const entry = await logCommunicationNote(request.shopId!, id, body.data);
+    if (!entry) return reply.notFound('Submission not found');
+    return entry;
+  });
+
+  // Send a freeform email to any non-customer recipient (parts supplier,
+  // insurance company directly, etc.), logged to the same audit trail.
+  app.post('/dashboard/submissions/:id/communications/email', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = sendGenericEmailSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.badRequest(body.error.issues.map((i) => i.message).join('; '));
+    }
+    const entry = await sendGenericEmail(request.shopId!, id, body.data);
+    if (!entry) return reply.notFound('Submission not found');
+    return entry;
+  });
 }
+
+
 

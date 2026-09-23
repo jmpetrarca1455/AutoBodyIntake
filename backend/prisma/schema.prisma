@@ -71,7 +71,12 @@ model ShopUser {
 /// Lifecycle of an intake submission as it moves through the shop.
 enum SubmissionStatus {
   RECEIVED
+  IN_REVIEW
   EMAILED
+  ESTIMATE_READY
+  IN_REPAIR
+  READY_FOR_PICKUP
+  COMPLETED
   FAILED
   ARCHIVED
 }
@@ -150,34 +155,42 @@ model Attachment {
   @@index([submissionId])
 }
 
-/// Audit log of every customer status-update (SMS/email) and adjuster
-/// follow-up email sent for a submission — the "AI employee"'s paper trail,
-/// and the source of truth for the status-update history shown in the
-/// dashboard. `direction` is OUTBOUND today; INBOUND is reserved for when
-/// two-way SMS replies are ingested (Twilio webhook, later phase).
+/// Audit log of every customer status-update (SMS/email), adjuster
+/// follow-up email, parts-supplier/insurance email, and manually-logged
+/// note/call for a submission — the full communications history shown in
+/// the dashboard, organized by `recipientType` so staff can filter by
+/// conversation instead of scanning one flat list.
 model CommunicationLog {
   id           String     @id @default(cuid())
   submissionId String
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
-  /// "sms" | "email"
+  /// "sms" | "email" | "note" | "call"
   channel String
-  /// "outbound" | "inbound"
+  /// "outbound" | "inbound" | "internal" (manually-logged notes/calls)
   direction String @default("outbound")
-  /// One of the shared StatusMilestone values, or null for adjuster emails.
+  /// "customer" | "adjuster" | "insurance" | "parts_supplier" | "internal" | "other"
+  recipientType String @default("customer")
+  /// Freeform label for who this was with when it's not simply "the
+  /// customer", e.g. an adjuster's name or a parts supplier's name.
+  recipientLabel String?
+  /// One of the shared StatusMilestone values, or null for non-status-update messages.
   milestone String?
   /// Email only.
   subject String?
   body    String
   /// True when an AI draft was used as-is (vs. staff writing/editing it).
   aiDrafted Boolean @default(false)
-  /// "sent" | "failed" | "preview" (no real SMS/email provider configured).
+  /// "sent" | "failed" | "preview" (no real SMS/email provider configured) | "logged" (manual note/call)
   status String
 
   createdAt DateTime @default(now())
 
   @@index([submissionId, createdAt])
+  @@index([submissionId, recipientType])
 }
+
+
 
 
 

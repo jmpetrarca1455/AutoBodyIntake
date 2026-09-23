@@ -33,14 +33,42 @@ export const MILESTONE_LABELS: Record<StatusMilestone, string> = {
   custom: 'Custom update',
 };
 
-export type CommunicationChannel = 'sms' | 'email';
-export type CommunicationDirection = 'outbound' | 'inbound';
-export type CommunicationStatus = 'sent' | 'failed' | 'preview';
+export type CommunicationChannel = 'sms' | 'email' | 'note' | 'call';
+export type CommunicationDirection = 'outbound' | 'inbound' | 'internal';
+export type CommunicationStatus = 'sent' | 'failed' | 'preview' | 'logged';
+
+/**
+ * Who a communication is with — lets the dashboard group/filter the audit
+ * trail by conversation instead of one flat list (customer vs. the
+ * insurance adjuster vs. a parts supplier vs. insurance directly, plus
+ * internal notes for calls/events that didn't happen through the portal).
+ */
+export const recipientType = z.enum([
+  'customer',
+  'adjuster',
+  'insurance',
+  'parts_supplier',
+  'internal',
+  'other',
+]);
+export type RecipientType = z.infer<typeof recipientType>;
+export const RECIPIENT_TYPE_LABELS: Record<RecipientType, string> = {
+  customer: 'Customer',
+  adjuster: 'Adjuster',
+  insurance: 'Insurance company',
+  parts_supplier: 'Parts supplier',
+  internal: 'Internal note',
+  other: 'Other',
+};
 
 export interface CommunicationLogEntry {
   id: string;
   channel: CommunicationChannel;
   direction: CommunicationDirection;
+  recipientType: RecipientType;
+  /** Free-text label for who this was with, e.g. "AutoZone — Main St", or
+   * an adjuster's name, when the recipient isn't simply "the customer". */
+  recipientLabel: string | null;
   milestone: StatusMilestone | null;
   subject: string | null;
   body: string;
@@ -86,6 +114,39 @@ export const sendAdjusterEmailSchema = z.object({
   to: z.string().email(),
   subject: z.string().min(1).max(300),
   body: z.string().min(1).max(20000),
+  /** Freeform label shown in the communications log, e.g. the adjuster's name. */
+  recipientLabel: z.string().max(200).optional(),
 });
 export type SendAdjusterEmailInput = z.infer<typeof sendAdjusterEmailSchema>;
+
+/**
+ * Manually log a communication that did NOT happen through this portal —
+ * a phone call, an in-person conversation, a fax, anything staff want on
+ * the record. No send happens; this just appends an audit-trail entry.
+ */
+export const logCommunicationNoteSchema = z.object({
+  recipientType,
+  recipientLabel: z.string().max(200).optional(),
+  channel: z.enum(['call', 'note']).default('note'),
+  body: z.string().min(1).max(10000),
+  /** When the call/interaction actually happened, if backdating; defaults to now. */
+  occurredAt: z.string().datetime().optional(),
+});
+export type LogCommunicationNoteInput = z.infer<typeof logCommunicationNoteSchema>;
+
+/**
+ * Send a freeform email to any non-customer recipient — a parts supplier,
+ * the insurance company directly (as opposed to a specific adjuster), or
+ * anyone else — with the same audit-trail logging as every other channel.
+ */
+export const sendGenericEmailSchema = z.object({
+  recipientType: recipientType.exclude(['customer']),
+  recipientLabel: z.string().max(200).optional(),
+  to: z.string().email(),
+  subject: z.string().min(1).max(300),
+  body: z.string().min(1).max(20000),
+});
+export type SendGenericEmailInput = z.infer<typeof sendGenericEmailSchema>;
+
+
 

@@ -1,13 +1,17 @@
 import type { FastifyInstance } from 'fastify';
+import { attachmentKind, staffUpdateSubmissionSchema, ALLOWED_UPLOAD_CONTENT_TYPES } from '@autobody/shared';
 import {
   listSubmissions,
   getSubmission,
+  updateSubmission,
   getStats,
   getShopSettings,
   updateShopSettings,
   runAiTriage,
   runDamageAssessment,
   getSmartQueue,
+  uploadStaffAttachment,
+  deleteAttachment,
 } from './dashboard.service.js';
 import { runAdjusterFollowUpSweep } from '../automation/automation.service.js';
 
@@ -44,6 +48,73 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     const submission = await getSubmission(request.shopId!, id);
     if (!submission) return reply.notFound('Submission not found');
     return submission;
+  });
+
+  // Staff "edit customer file" — patch any intake field group and/or move
+  // the submission's lifecycle status (e.g. mark ESTIMATE_READY).
+  app.patch('/dashboard/submissions/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = staffUpdateSubmissionSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.badRequest(body.error.issues.map((i) => i.message).join('; '));
+    }
+    const submission = await updateSubmission(request.shopId!, id, body.data);
+    if (!submission) return reply.notFound('Submission not found');
+    return submission;
+  });
+
+  // Staff upload/replace an attachment — add a new document of any kind
+  // (insurance card, license, registration, estimate, etc.) or upload a
+  // fresher copy of one that already exists. Always adds a new Attachment
+  // row (never mutates history) so old versions stay in the file.
+  app.post('/dashboard/submissions/:id/attachments', async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    const kind = attachmentKind.safeParse((request.query as { kind?: string }).kind);
+    if (!kind.success) {
+      return reply.badRequest(
+        `Invalid or missing "kind" (allowed: ${attachmentKind.options.join(', ')})`,
+      );
+    }
+
+    const file = await request.file();
+    if (!file) {
+      return reply.badRequest('No file uploaded (expected multipart form-data)');
+    }
+    if (!ALLOWED_UPLOAD_CONTENT_TYPES.has(file.mimetype)) {
+      return reply.unsupportedMediaType(
+        `Unsupported file type "${file.mimetype}". Allowed: images and PDF.`,
+      );
+    }
+    const body = await file.toBuffer();
+    if (file.file.truncated) {
+      return reply.payloadTooLarge('File exceeds the maximum upload size.');
+    }
+
+    const attachment = await uploadStaffAttachment(request.shopId!, id, {
+      kind: kind.data,
+      fileName: file.filename,
+      contentType: file.mimetype,
+      body,
+    });
+    if (!attachment) return reply.notFound('Submission not found');
+
+    return reply.code(201).send({
+      id: attachment.id,
+      kind: attachment.kind,
+      fileName: attachment.fileName,
+      contentType: attachment.contentType,
+      sizeBytes: attachment.sizeBytes,
+      downloadUrl: `/v1/attachments/${attachment.id}`,
+    });
+  });
+
+  // Remove an attachment that was uploaded in error (e.g. wrong document).
+  app.delete('/dashboard/submissions/:id/attachments/:attachmentId', async (request, reply) => {
+    const { id, attachmentId } = request.params as { id: string; attachmentId: string };
+    const ok = await deleteAttachment(request.shopId!, id, attachmentId);
+    if (!ok) return reply.notFound('Attachment not found');
+    return reply.send({ deleted: true });
   });
 
   // Generate (or regenerate) the AI triage summary for a submission.
@@ -95,6 +166,10 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
+
+
+
+
 
 
 

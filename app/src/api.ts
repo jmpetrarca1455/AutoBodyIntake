@@ -21,8 +21,19 @@ import type {
   AdjusterEmailDraft,
   CommunicationLogEntry,
   QueueItem,
+  StaffUpdateSubmissionInput,
+  SubmissionStatusValue,
+  RecipientType,
+  LogCommunicationNoteInput,
+  SendGenericEmailInput,
 } from '@autobody/shared';
-import { documentKindForAttachmentKind } from '@autobody/shared';
+import {
+  documentKindForAttachmentKind,
+  ATTACHMENT_KIND_LABELS,
+  SUBMISSION_STATUS_LABELS,
+  RECIPIENT_TYPE_LABELS,
+  submissionStatusValues,
+} from '@autobody/shared';
 import { config } from './config';
 
 // Re-export under the names the rest of the app already uses.
@@ -44,8 +55,19 @@ export type {
   AdjusterEmailDraft,
   CommunicationLogEntry,
   QueueItem,
+  StaffUpdateSubmissionInput,
+  SubmissionStatusValue,
+  RecipientType,
+  LogCommunicationNoteInput,
+  SendGenericEmailInput,
 };
-export { documentKindForAttachmentKind };
+export {
+  documentKindForAttachmentKind,
+  ATTACHMENT_KIND_LABELS,
+  SUBMISSION_STATUS_LABELS,
+  RECIPIENT_TYPE_LABELS,
+  submissionStatusValues,
+};
 
 export interface CreatedSubmission {
   id: string;
@@ -258,6 +280,66 @@ export const api = {
     return request(`/v1/dashboard/submissions/${submissionId}`, undefined, authToken);
   },
 
+  /** Staff "edit customer file" — patch any intake field group and/or status. */
+  updateSubmissionStaff(
+    authToken: string,
+    submissionId: string,
+    patch: Partial<StaffUpdateSubmissionInput>,
+  ): Promise<SubmissionDetail> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+      authToken,
+    );
+  },
+
+  /** Staff upload a new attachment (or a replacement copy of an existing kind). */
+  async uploadStaffAttachment(
+    authToken: string,
+    submissionId: string,
+    kind: AttachmentKind,
+    file: LocalFile,
+  ): Promise<{ id: string; kind: string; fileName: string; sizeBytes: number }> {
+    const form = new FormData();
+    form.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType,
+    } as unknown as Blob);
+
+    const res = await fetch(
+      `${config.apiBaseUrl}/v1/dashboard/submissions/${submissionId}/attachments?kind=${kind}`,
+      {
+        method: 'POST',
+        body: form,
+        headers: { Authorization: `Bearer ${authToken}` },
+      },
+    );
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((body as { message?: string }).message ?? 'Upload failed');
+    }
+    return body as { id: string; kind: string; fileName: string; sizeBytes: number };
+  },
+
+  /** Remove an attachment uploaded in error. */
+  deleteAttachment(
+    authToken: string,
+    submissionId: string,
+    attachmentId: string,
+  ): Promise<{ deleted: boolean }> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/attachments/${attachmentId}`,
+      { method: 'DELETE' },
+      authToken,
+    );
+  },
+
+  /** Build a viewable/downloadable URL for an attachment. */
+  attachmentUrl(attachmentId: string): string {
+    return `${config.apiBaseUrl}/v1/attachments/${attachmentId}`;
+  },
+
   regenerateAiSummary(authToken: string, submissionId: string): Promise<AiTriageSummary> {
     return request(`/v1/dashboard/submissions/${submissionId}/ai-summary`, { method: 'POST' }, authToken);
   },
@@ -339,6 +421,32 @@ export const api = {
     return request(`/v1/dashboard/submissions/${submissionId}/communications`, undefined, authToken);
   },
 
+  /** Manually log a call/note that happened outside the portal. */
+  logCommunicationNote(
+    authToken: string,
+    submissionId: string,
+    input: LogCommunicationNoteInput,
+  ): Promise<CommunicationLogEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/communications/note`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
+  /** Send a freeform email to a parts supplier, insurance company, etc. */
+  sendGenericEmail(
+    authToken: string,
+    submissionId: string,
+    input: SendGenericEmailInput,
+  ): Promise<CommunicationLogEntry> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/communications/email`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
+
   // ── Automated adjuster follow-up sweep (manual trigger) ─
   runAdjusterFollowUpSweep(
     authToken: string,
@@ -350,6 +458,9 @@ export const api = {
     );
   },
 };
+
+
+
 
 
 

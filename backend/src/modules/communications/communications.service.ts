@@ -3,7 +3,9 @@ import type {
   CommunicationLogEntry,
   CreateIntakeInput,
   DraftStatusUpdateInput,
+  LogCommunicationNoteInput,
   SendAdjusterEmailInput,
+  SendGenericEmailInput,
   SendStatusUpdateInput,
   StatusUpdateDraft,
 } from '@autobody/shared';
@@ -30,6 +32,8 @@ function toEntry(row: {
   id: string;
   channel: string;
   direction: string;
+  recipientType: string;
+  recipientLabel: string | null;
   milestone: string | null;
   subject: string | null;
   body: string;
@@ -41,6 +45,8 @@ function toEntry(row: {
     id: row.id,
     channel: row.channel as CommunicationLogEntry['channel'],
     direction: row.direction as CommunicationLogEntry['direction'],
+    recipientType: row.recipientType as CommunicationLogEntry['recipientType'],
+    recipientLabel: row.recipientLabel,
     milestone: row.milestone as CommunicationLogEntry['milestone'],
     subject: row.subject,
     body: row.body,
@@ -122,6 +128,7 @@ export async function recordInboundSms(
       submissionId: match.id,
       channel: 'sms',
       direction: 'inbound',
+      recipientType: 'customer',
       milestone: null,
       body,
       aiDrafted: false,
@@ -188,6 +195,7 @@ export async function sendStatusUpdate(
           submissionId,
           channel: 'sms',
           direction: 'outbound',
+          recipientType: 'customer',
           milestone: input.milestone,
           body: input.message,
           aiDrafted: false,
@@ -220,6 +228,7 @@ export async function sendStatusUpdate(
         submissionId,
         channel,
         direction: 'outbound',
+        recipientType: 'customer',
         milestone: input.milestone,
         body: input.message,
         aiDrafted: false,
@@ -236,6 +245,7 @@ export async function sendStatusUpdate(
       submissionId,
       channel,
       direction: 'outbound',
+      recipientType: 'customer',
       milestone: input.milestone,
       body: input.message,
       aiDrafted: false,
@@ -296,6 +306,8 @@ export async function sendAdjusterEmail(
       submissionId,
       channel: 'email',
       direction: 'outbound',
+      recipientType: 'adjuster',
+      recipientLabel: input.recipientLabel,
       milestone: null,
       subject: input.subject,
       body: input.body,
@@ -305,6 +317,83 @@ export async function sendAdjusterEmail(
   });
   return toEntry(row);
 }
+
+// ── Manual notes/calls & generic (non-customer, non-adjuster) email ──────
+
+/**
+ * Manually log a communication that happened outside the portal (a phone
+ * call, an in-person chat, a fax). No send happens — this just appends an
+ * audit-trail entry, optionally backdated via `occurredAt`.
+ */
+export async function logCommunicationNote(
+  shopId: string,
+  submissionId: string,
+  input: LogCommunicationNoteInput,
+): Promise<CommunicationLogEntry | null> {
+  const submission = await getScopedSubmission(shopId, submissionId);
+  if (!submission) return null;
+
+  const row = await prisma.communicationLog.create({
+    data: {
+      submissionId,
+      channel: input.channel,
+      direction: 'internal',
+      recipientType: input.recipientType,
+      recipientLabel: input.recipientLabel,
+      milestone: null,
+      body: input.body,
+      aiDrafted: false,
+      status: 'logged',
+      ...(input.occurredAt ? { createdAt: new Date(input.occurredAt) } : {}),
+    },
+  });
+  return toEntry(row);
+}
+
+/**
+ * Send a freeform email to any non-customer recipient — a parts supplier,
+ * the insurance company directly, etc. — with the same audit-trail logging
+ * as every other channel.
+ */
+export async function sendGenericEmail(
+  shopId: string,
+  submissionId: string,
+  input: SendGenericEmailInput,
+): Promise<CommunicationLogEntry | null> {
+  const submission = await getScopedSubmission(shopId, submissionId);
+  if (!submission) return null;
+
+  let status: 'sent' | 'failed' | 'preview' = 'sent';
+  try {
+    const result = await sendRawEmail(input.to, input.subject, input.body);
+    status = result.driver === 'preview' ? 'preview' : 'sent';
+  } catch (err) {
+    status = 'failed';
+    // eslint-disable-next-line no-console
+    console.warn('[communications] generic email send failed:', (err as Error).message);
+  }
+
+  const row = await prisma.communicationLog.create({
+    data: {
+      submissionId,
+      channel: 'email',
+      direction: 'outbound',
+      recipientType: input.recipientType,
+      recipientLabel: input.recipientLabel,
+      milestone: null,
+      subject: input.subject,
+      body: input.body,
+      aiDrafted: false,
+      status,
+    },
+  });
+  return toEntry(row);
+}
+
+
+
+
+
 
 
 

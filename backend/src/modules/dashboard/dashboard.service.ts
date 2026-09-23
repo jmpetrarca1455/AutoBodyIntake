@@ -2,8 +2,15 @@ import { prisma } from '../../lib/prisma.js';
 import { config } from '../../config/index.js';
 import { generateTriageSummary } from '../ai/ai.service.js';
 import { assessDamage } from '../ai/estimate.service.js';
-import { storage } from '../storage/storage.service.js';
-import type { CreateIntakeInput, AiTriageSummary, QueueItem } from '@autobody/shared';
+import { buildStorageKey, storage } from '../storage/storage.service.js';
+import type {
+  CreateIntakeInput,
+  AiTriageSummary,
+  AttachmentKind,
+  QueueItem,
+  StaffUpdateSubmissionInput,
+} from '@autobody/shared';
+import { buildVehicleSummary } from '@autobody/shared';
 import type { Prisma } from '@prisma/client';
 
 /**
@@ -57,6 +64,105 @@ export async function getSubmission(shopId: string, submissionId: string) {
     where: { id: submissionId, shopId },
     include: { attachments: true },
   });
+}
+
+/**
+ * Staff "edit customer file" — shallow-merges the same field groups as the
+ * customer-facing update (contact/insurance/license/vehicle/rental/claim)
+ * and optionally moves the submission's lifecycle `status`. Also refreshes
+ * the promoted summary columns (customerName, vehicleInfo, etc.) so list
+ * views stay consistent with the edited data.
+ */
+export async function updateSubmission(
+  shopId: string,
+  submissionId: string,
+  input: StaffUpdateSubmissionInput,
+) {
+  const existing = await prisma.submission.findFirst({ where: { id: submissionId, shopId } });
+  if (!existing) return null;
+
+  const current = existing.data as unknown as CreateIntakeInput;
+  const merged: CreateIntakeInput = {
+    contact: { ...current.contact, ...input.contact },
+    insurance: { ...current.insurance, ...input.insurance },
+    license: { ...current.license, ...input.license },
+    vehicle: { ...current.vehicle, ...input.vehicle },
+    rental: { ...current.rental, ...input.rental },
+    claim: { ...current.claim, ...input.claim },
+  };
+
+  return prisma.submission.update({
+    where: { id: submissionId },
+    data: {
+      data: merged as unknown as Prisma.InputJsonValue,
+      ...(input.status ? { status: input.status } : {}),
+      customerName: merged.contact?.fullName ?? existing.customerName,
+      customerEmail: merged.contact?.email ?? null,
+      customerPhone: merged.contact?.phone ?? null,
+      vehicleInfo: buildVehicleSummary(merged.vehicle) ?? existing.vehicleInfo,
+      claimNumber: merged.insurance?.claimNumber ?? existing.claimNumber,
+    },
+    include: { attachments: true },
+  });
+}
+
+/**
+ * Staff upload/replace an attachment — adds a new Attachment row for the
+ * given kind (insurance card, license, registration, estimate document,
+ * etc.). Never deletes/overwrites an existing row, so replacing a photo
+ * keeps the old one in history (visible/removable via deleteAttachment).
+ */
+export interface StaffUploadAttachmentInput {
+  kind: AttachmentKind;
+  fileName: string;
+  contentType: string;
+  body: Buffer;
+}
+
+export async function uploadStaffAttachment(
+  shopId: string,
+  submissionId: string,
+  input: StaffUploadAttachmentInput,
+) {
+  const submission = await prisma.submission.findFirst({ where: { id: submissionId, shopId } });
+  if (!submission) return null;
+
+  const attachment = await prisma.attachment.create({
+    data: {
+      submissionId,
+      kind: input.kind,
+      fileName: input.fileName,
+      contentType: input.contentType,
+      sizeBytes: input.body.byteLength,
+    },
+  });
+
+  const key = buildStorageKey({
+    shopId,
+    submissionId,
+    attachmentId: attachment.id,
+    fileName: input.fileName,
+  });
+  const stored = await storage.put(key, input.body, input.contentType);
+
+  return prisma.attachment.update({
+    where: { id: attachment.id },
+    data: { storageKey: stored.key, sizeBytes: stored.sizeBytes },
+  });
+}
+
+/** Remove an attachment uploaded in error. Shop-scoped via the submission. */
+export async function deleteAttachment(
+  shopId: string,
+  submissionId: string,
+  attachmentId: string,
+): Promise<boolean> {
+  const attachment = await prisma.attachment.findFirst({
+    where: { id: attachmentId, submissionId, submission: { shopId } },
+  });
+  if (!attachment) return false;
+  await prisma.attachment.delete({ where: { id: attachmentId } });
+  return true;
 }
 
 /** Quick counts for the dashboard home screen. */
@@ -196,6 +302,12 @@ export async function getSmartQueue(shopId: string): Promise<QueueItem[]> {
 
   return items.sort((a, b) => b.score - a.score);
 }
+
+
+
+
+
+
 
 
 

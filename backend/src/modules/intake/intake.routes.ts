@@ -15,7 +15,6 @@ import {
   finalizeSubmission,
   getAttachmentById,
   getSubmissionById,
-  listSubmissionsForShop,
   runOcrOnAttachment,
   updateSubmissionData,
   uploadAttachment,
@@ -265,38 +264,12 @@ export async function intakeRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(result.stream);
   });
 
-  // List a shop's submissions (owner view — cursor paginated).
-  app.get('/shops/:id/submissions', async (request, reply) => {
-    const params = submissionParamsSchema.safeParse(request.params);
-    if (!params.success) {
-      return reply.badRequest('Invalid shop id');
-    }
-
-    const query = request.query as { limit?: string; cursor?: string };
-    const limit = query.limit ? Number(query.limit) : undefined;
-
-    const { items, nextCursor } = await listSubmissionsForShop(params.data.id, {
-      limit: Number.isFinite(limit) ? limit : undefined,
-      cursor: query.cursor,
-    });
-
-    return { items, nextCursor };
-  });
-
-  // Read a single submission (owner view — full payload + attachments).
-  app.get('/submissions/:id', async (request, reply) => {
-    const params = submissionParamsSchema.safeParse(request.params);
-    if (!params.success) {
-      return reply.badRequest('Invalid submission id');
-    }
-
-    const submission = await getSubmissionById(params.data.id);
-    if (!submission) {
-      return reply.notFound('Submission not found');
-    }
-    return submission;
-  });
+  // Note: unscoped shop/submission read routes were removed in favor of the
+  // shop-scoped, auth-guarded equivalents under /dashboard/* (see
+  // dashboard.routes.ts) — those never trust a client-supplied shop id.
 }
+
+
 
 
 

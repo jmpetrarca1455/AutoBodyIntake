@@ -118,12 +118,76 @@ export const attachmentKind = z.enum([
   'insurance_card_back',
   'license_front',
   'license_back',
+  'registration_front',
+  'registration_back',
   'vehicle_photo',
   'damage_photo',
   'vin_photo',
+  'estimate_document',
+  'repair_order',
   'other',
 ]);
 export type AttachmentKind = z.infer<typeof attachmentKind>;
+
+/** Human-friendly labels for each attachment category — used by any UI that
+ * lists/groups attachments (dashboard file manager, etc.). */
+export const ATTACHMENT_KIND_LABELS: Record<AttachmentKind, string> = {
+  insurance_card_front: 'Insurance card (front)',
+  insurance_card_back: 'Insurance card (back)',
+  license_front: "Driver's license (front)",
+  license_back: "Driver's license (back)",
+  registration_front: 'Vehicle registration (front)',
+  registration_back: 'Vehicle registration (back)',
+  vehicle_photo: 'Vehicle photo',
+  damage_photo: 'Damage photo',
+  vin_photo: 'VIN photo',
+  estimate_document: 'Estimate document',
+  repair_order: 'Repair order',
+  other: 'Other document',
+};
+
+/** Lifecycle status a submission can be in, editable by staff from the
+ * dashboard (beyond the automatic RECEIVED/EMAILED/FAILED set by intake). */
+export const submissionStatusValues = [
+  'RECEIVED',
+  'IN_REVIEW',
+  'EMAILED',
+  'ESTIMATE_READY',
+  'IN_REPAIR',
+  'READY_FOR_PICKUP',
+  'COMPLETED',
+  'FAILED',
+  'ARCHIVED',
+] as const;
+export const submissionStatus = z.enum(submissionStatusValues);
+export type SubmissionStatusValue = z.infer<typeof submissionStatus>;
+export const SUBMISSION_STATUS_LABELS: Record<SubmissionStatusValue, string> = {
+  RECEIVED: 'Received',
+  IN_REVIEW: 'In review',
+  EMAILED: 'Emailed to shop',
+  ESTIMATE_READY: 'Estimate ready',
+  IN_REPAIR: 'In repair',
+  READY_FOR_PICKUP: 'Ready for pickup',
+  COMPLETED: 'Completed',
+  FAILED: 'Failed',
+  ARCHIVED: 'Archived',
+};
+
+/**
+ * Full staff-editable patch of a submission's intake data plus its
+ * lifecycle status — used by the dashboard's "edit customer file" screen.
+ * Same shallow-merge semantics as `updateIntakeSchema` (customer-facing).
+ */
+export const staffUpdateSubmissionSchema = z.object({
+  contact: contactSchema.partial().optional(),
+  insurance: insuranceSchema,
+  license: licenseSchema,
+  vehicle: vehicleSchema,
+  rental: rentalSchema,
+  claim: claimSchema,
+  status: submissionStatus.optional(),
+});
+export type StaffUpdateSubmissionInput = z.infer<typeof staffUpdateSubmissionSchema>;
 
 /** Image + PDF only — what a shop actually needs from an intake. */
 export const ALLOWED_UPLOAD_CONTENT_TYPES = new Set([
@@ -142,6 +206,7 @@ export interface CreatedSubmission {
   receivedAt: string;
   message: string;
 }
+
 
 
 
