@@ -1,15 +1,19 @@
 import fp from 'fastify-plugin';
 import cors from '@fastify/cors';
 import type { FastifyInstance } from 'fastify';
+import { corsAllowedOrigins } from '../config/index.js';
 
 /**
- * CORS policy. `origin: true` reflects the request origin for now — tighten
- * to a known allow-list of app/web origins before production launch.
+ * CORS policy. When `CORS_ALLOWED_ORIGINS` is set, only those origins are
+ * allowed (lock this down before a public launch). Falls back to reflecting
+ * any origin in dev so local testing (web on any port, physical devices on
+ * a LAN IP) works with zero config.
  */
 export default fp(async (app: FastifyInstance) => {
   await app.register(cors, {
-    origin: true, // TODO: lock to known app origins before production launch.
+    origin: corsAllowedOrigins ?? true,
   });
 });
+
 
 

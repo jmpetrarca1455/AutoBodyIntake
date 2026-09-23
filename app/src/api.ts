@@ -338,7 +338,19 @@ export const api = {
   listCommunications(authToken: string, submissionId: string): Promise<CommunicationLogEntry[]> {
     return request(`/v1/dashboard/submissions/${submissionId}/communications`, undefined, authToken);
   },
+
+  // ── Automated adjuster follow-up sweep (manual trigger) ─
+  runAdjusterFollowUpSweep(
+    authToken: string,
+  ): Promise<{ checked: number; sent: number; skipped: number }> {
+    return request(
+      '/v1/dashboard/automation/adjuster-followups/run',
+      { method: 'POST' },
+      authToken,
+    );
+  },
 };
+
 
 
 

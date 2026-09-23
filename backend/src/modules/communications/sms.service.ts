@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { config, hasTwilio, smsDriver } from '../../config/index.js';
 
 /**
@@ -59,4 +60,38 @@ export async function sendSms(to: string, body: string): Promise<SmsResult> {
 }
 
 export { smsDriver };
+
+/**
+ * Verify an inbound Twilio webhook request signature (X-Twilio-Signature).
+ * Only enforced when Twilio is actually configured (hasTwilio) — in local
+ * "preview" dev (no Twilio account), inbound webhooks are only reachable by
+ * whoever calls them directly (e.g. a curl test), so we skip verification
+ * to keep zero-config testing simple.
+ *
+ * Algorithm per Twilio's docs: HMAC-SHA1 of the full request URL with all
+ * POST params (sorted by key, concatenated as key+value) appended, keyed by
+ * the auth token, base64-encoded, compared to the signature header.
+ */
+export function verifyTwilioSignature(
+  fullUrl: string,
+  params: Record<string, string>,
+  signatureHeader: string | undefined,
+): boolean {
+  if (!hasTwilio) return true; // nothing to verify against in preview mode
+  if (!signatureHeader) return false;
+
+  const sortedKeys = Object.keys(params).sort();
+  let data = fullUrl;
+  for (const key of sortedKeys) {
+    data += key + params[key];
+  }
+
+  const expected = createHmac('sha1', config.TWILIO_AUTH_TOKEN!)
+    .update(Buffer.from(data, 'utf8'))
+    .digest('base64');
+
+  return expected === signatureHeader;
+}
+
+
 

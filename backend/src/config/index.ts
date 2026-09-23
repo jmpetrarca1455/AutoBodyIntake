@@ -18,6 +18,11 @@ const envSchema = z.object({
   // Public base URL of the customer intake app; used to build shop links/QRs.
   INTAKE_BASE_URL: z.string().url().default('http://localhost:8081'),
 
+  // Comma-separated list of allowed CORS origins (e.g. your deployed web
+  // app + portal domains). Leave blank in dev to reflect any origin
+  // (zero-config); MUST be set before a public launch.
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+
   S3_ENDPOINT: z.string().optional(),
   S3_REGION: z.string().default('auto'),
   S3_BUCKET: z.string().optional(),
@@ -38,6 +43,15 @@ const envSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
+
+  // ── Automated adjuster follow-ups ──────────────────────
+  // Off by default — auto-sending email on a shop's behalf is a meaningful
+  // behavior change; shops should opt in. When enabled, a background sweep
+  // periodically drafts + sends a follow-up to the adjuster on file for any
+  // submission with a claim number that hasn't heard back in N days.
+  AUTO_ADJUSTER_FOLLOWUP_ENABLED: z.coerce.boolean().default(false),
+  AUTO_ADJUSTER_FOLLOWUP_DAYS: z.coerce.number().int().positive().default(3),
+  AUTO_ADJUSTER_FOLLOWUP_INTERVAL_MS: z.coerce.number().int().positive().default(6 * 60 * 60 * 1000),
 
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(25),
 
@@ -101,6 +115,21 @@ export const storageDriver: 's3' | 'local' = hasS3Storage ? 's3' : 'local';
  */
 export const hasEmail = Boolean(config.RESEND_API_KEY);
 export const emailDriver: 'resend' | 'preview' = hasEmail ? 'resend' : 'preview';
+
+/**
+ * Parsed CORS allow-list, or `null` when unset (dev fallback: reflect any
+ * origin). Set CORS_ALLOWED_ORIGINS before a public launch.
+ */
+export const corsAllowedOrigins: string[] | null = config.CORS_ALLOWED_ORIGINS
+  ? config.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+  : null;
+
+if (isProd && !corsAllowedOrigins) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '⚠️  CORS_ALLOWED_ORIGINS is not set in production — reflecting any origin. Set it before a public launch.',
+  );
+}
 
 /**
  * True when Twilio credentials are configured. When false, SMS "sends" are

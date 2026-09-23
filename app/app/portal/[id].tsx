@@ -347,7 +347,8 @@ export default function SubmissionDetailScreen() {
           comms.map((c) => (
             <View key={c.id} style={styles.commRow}>
               <Text style={styles.commMeta}>
-                {c.channel.toUpperCase()} · {c.status} · {new Date(c.createdAt).toLocaleString()}
+                {c.direction === 'inbound' ? '← Customer replied' : '→ Sent'} · {c.channel.toUpperCase()} ·{' '}
+                {c.status} · {new Date(c.createdAt).toLocaleString()}
                 {c.aiDrafted ? ' · AI-drafted' : ''}
               </Text>
               {c.subject ? <Text style={styles.commSubject}>{c.subject}</Text> : null}
@@ -454,4 +455,5 @@ const styles = StyleSheet.create({
   commMeta: { fontSize: 11, color: colors.muted, marginBottom: 2, fontWeight: '600' },
   commSubject: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 2 },
 });
+
 

@@ -28,6 +28,10 @@ export default function ShopSettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // Automated adjuster follow-up sweep (manual trigger)
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepResult, setSweepResult] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!token) return;
     const s = await api.getShopSettings(token);
@@ -79,6 +83,22 @@ export default function ShopSettingsScreen() {
     }
   }
 
+  async function runSweep() {
+    if (!token) return;
+    setSweeping(true);
+    setSweepResult(null);
+    try {
+      const result = await api.runAdjusterFollowUpSweep(token);
+      setSweepResult(
+        `Checked ${result.checked} submission(s) — sent ${result.sent} follow-up(s), skipped ${result.skipped}.`,
+      );
+    } catch (e) {
+      setSweepResult((e as Error).message);
+    } finally {
+      setSweeping(false);
+    }
+  }
+
   if (authLoading || loading || !settings) {
     return (
       <View style={styles.center}>
@@ -124,6 +144,20 @@ export default function ShopSettingsScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton title={saved ? 'Saved!' : 'Save changes'} loading={saving} onPress={save} />
       </Section>
+
+      <Section title="Automated adjuster follow-ups">
+        <Text style={styles.hint}>
+          Nudge every stale insurance claim at once — drafts and sends a follow-up email to the
+          adjuster on file for any submission whose claim hasn't heard back in a few days. Runs
+          automatically in the background too (if enabled server-side); use this to run it now.
+        </Text>
+        <PrimaryButton
+          title="Nudge stale claims now"
+          loading={sweeping}
+          onPress={runSweep}
+        />
+        {sweepResult ? <Text style={styles.hint}>{sweepResult}</Text> : null}
+      </Section>
     </ScrollView>
   );
 }
@@ -145,4 +179,7 @@ const styles = StyleSheet.create({
   qr: { width: 220, height: 220, borderRadius: 8 },
   error: { color: colors.danger, marginBottom: spacing.sm },
 });
+
+
+
 

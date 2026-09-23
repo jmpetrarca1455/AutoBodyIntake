@@ -63,6 +63,56 @@ export async function listCommunications(
   return rows.map(toEntry);
 }
 
+/**
+ * Handle an inbound SMS (customer reply) from Twilio's webhook. Matches the
+ * sender's phone number to the most recent submission with that
+ * `customerPhone` (across shops — a phone number isn't shop-scoped at the
+ * carrier level) and appends it to that submission's communications log so
+ * staff see two-way conversations in one place.
+ *
+ * Normalizes phone numbers to their last 10 digits for matching, since
+ * customers may have typed "(555) 123-4567" at intake while Twilio sends
+ * "+15551234567" — exact string matching would silently drop every reply.
+ */
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '').slice(-10);
+}
+
+export async function recordInboundSms(
+  fromPhone: string,
+  body: string,
+): Promise<{ submissionId: string; shopId: string } | null> {
+  const normalized = normalizePhone(fromPhone);
+  if (!normalized) return null;
+
+  // customerPhone isn't indexed for suffix matching, so pull recent
+  // submissions with any phone on file and match in application code. Fine
+  // at pilot scale; revisit with a normalized-phone column if this becomes
+  // a hot path at larger scale.
+  const candidates = await prisma.submission.findMany({
+    where: { customerPhone: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+    select: { id: true, shopId: true, customerPhone: true },
+  });
+  const match = candidates.find((c) => normalizePhone(c.customerPhone ?? '') === normalized);
+  if (!match) return null;
+
+  await prisma.communicationLog.create({
+    data: {
+      submissionId: match.id,
+      channel: 'sms',
+      direction: 'inbound',
+      milestone: null,
+      body,
+      aiDrafted: false,
+      status: 'sent',
+    },
+  });
+
+  return { submissionId: match.id, shopId: match.shopId };
+}
+
 // ── Status updates ───────────────────────────────────────
 
 export async function draftStatusUpdateForSubmission(
@@ -204,4 +254,5 @@ export async function sendAdjusterEmail(
   });
   return toEntry(row);
 }
+
 

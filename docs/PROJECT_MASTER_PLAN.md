@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (AI damage assessment, AI-drafted status updates/SMS, AI-drafted adjuster emails, and the Smart Queue shipped — the "AI employee" layer now covers triage, OCR, damage estimation, and both customer- and adjuster-facing communications)
+- **Last updated:** September 22, 2026 (Two-way SMS inbound webhook, automated adjuster follow-up sweep, and configurable CORS lockdown shipped — the "AI employee" layer is now feature-complete per the original roadmap)
 
 ---
 
@@ -272,8 +272,8 @@ AutoBodyIntake/
 - ✅ AI-drafted customer status updates — one-click AI draft (per milestone: received/in-review/estimate-ready/parts-ordered/in-repair/quality-check/ready-for-pickup/etc.) that staff review/edit before sending via SMS (Twilio, swappable ⇄ preview) or email; full audit log per submission (`CommunicationLog`)
 - ✅ AI-drafted adjuster follow-up emails — one-click draft requesting claim status/approval, pre-filled with claim#/policy#/insurer/adjuster from the intake data, staff review/edit before sending
 - ✅ Smart Queue — shop-wide ranked worklist (`GET /dashboard/queue`) combining AI priority + submission age + missing-info count into one score, so front-desk staff always know what to work on next instead of scanning a plain inbox
-- ⬜ Two-way SMS status updates (inbound replies — outbound is done; Twilio webhook ingestion is the remaining piece)
-- ⬜ Automated (scheduled/recurring) insurance adjuster follow-ups — one-click drafting is done; auto-triggering on a timer (e.g. "no adjuster reply in 3 days") is the remaining piece
+- ✅ Two-way SMS status updates — inbound customer replies ingested via a Twilio webhook (`POST /v1/webhooks/twilio/sms`, signature-verified), matched to the right submission by phone number, and appended to the same communications history the dashboard shows
+- ✅ Automated insurance adjuster follow-ups — opt-in background sweep (`AUTO_ADJUSTER_FOLLOWUP_ENABLED`) that nudges any claim idle N+ days, plus an on-demand "run now" trigger from Shop Settings
 - ✅ Multi-user roles per shop (owner vs. staff — `ShopUser`/`ShopRole`, owner-only staff invite/deactivate, auth guard resolves role)
 
 ---

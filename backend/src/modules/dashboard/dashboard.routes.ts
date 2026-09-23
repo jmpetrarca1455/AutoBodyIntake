@@ -9,6 +9,7 @@ import {
   runDamageAssessment,
   getSmartQueue,
 } from './dashboard.service.js';
+import { runAdjusterFollowUpSweep } from '../automation/automation.service.js';
 
 /**
  * Shop portal ("dashboard") endpoints — everything behind login. Every
@@ -80,7 +81,22 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       isActive: typeof body.isActive === 'boolean' ? body.isActive : undefined,
     });
   });
+
+  // Manually trigger the automated adjuster follow-up sweep for just this
+  // shop (useful for testing without waiting for the background interval,
+  // or for shops that prefer an on-demand "nudge all stale claims" button
+  // over the always-on background scheduler). Owner-only since it sends
+  // real emails without a per-message review step.
+  app.post(
+    '/dashboard/automation/adjuster-followups/run',
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      return runAdjusterFollowUpSweep(request.shopId!);
+    },
+  );
 }
+
+
 
 
 

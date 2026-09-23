@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config/index.js';
 import { prisma } from './lib/prisma.js';
+import { startAutomationScheduler } from './modules/automation/automation.service.js';
 
 /**
  * Server bootstrap: builds the app, starts listening, and wires
@@ -8,9 +9,11 @@ import { prisma } from './lib/prisma.js';
  */
 async function main(): Promise<void> {
   const app = await buildApp();
+  const stopAutomation = startAutomationScheduler(app.log);
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`Received ${signal}, shutting down gracefully...`);
+    stopAutomation();
     await app.close();
     await prisma.$disconnect();
     process.exit(0);

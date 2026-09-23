@@ -207,6 +207,36 @@ curl -X POST http://localhost:3000/v1/dashboard/submissions/:id/adjuster-email/s
   -d '{"to":"adjuster@insurer.com","subject":"...","body":"..."}'
 ```
 
+## Two-way SMS (inbound customer replies)
+
+Outbound status-update texts are sent from the dashboard (above); inbound
+replies complete the loop. Point your Twilio phone number's "A message
+comes in" webhook at:
+```
+POST https://your-backend-domain/v1/webhooks/twilio/sms
+```
+No auth (Twilio can't send a JWT) — verified instead via Twilio's request
+signature (`X-Twilio-Signature`), skipped automatically in local dev when
+no Twilio account is configured. Matches the sender's phone number to the
+most recent submission with that `customerPhone` and appends the reply to
+that submission's communications log (`direction: "inbound"`), visible
+right alongside the outbound history in the dashboard.
+
+## Automated adjuster follow-ups
+
+A background sweep (off by default — opt in with
+`AUTO_ADJUSTER_FOLLOWUP_ENABLED=true`) periodically nudges the adjuster on
+file for any submission with a claim number that hasn't heard back in
+`AUTO_ADJUSTER_FOLLOWUP_DAYS` (default 3). Reuses the same AI drafting as
+the manual adjuster-email flow, and logs every send the same way.
+```bash
+# Manually trigger the sweep for just your shop (e.g. to test without
+# waiting for the interval, or as an on-demand "nudge all stale claims" button)
+curl -X POST http://localhost:3000/v1/dashboard/automation/adjuster-followups/run \
+  -H 'Authorization: Bearer <owner token>'
+# → { "checked": 5, "sent": 2, "skipped": 3 }
+```
+
 ## Smart Queue — shop-wide ranked worklist
 
 Ranks every active submission by what actually needs attention right now —
