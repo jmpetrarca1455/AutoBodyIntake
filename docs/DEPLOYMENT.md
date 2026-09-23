@@ -129,18 +129,60 @@ see https://docs.expo.dev/build/setup/.
 
 ---
 
+## Go-live checklist — turning on real email, SMS, storage & AI
+
+Every external integration in this codebase is built with a **zero-config
+dev fallback ⇄ real-provider swap**, driven entirely by env vars/secrets —
+no code changes needed to go live. The table below is everything you
+personally need to create an account for and paste a real value into (`fly
+secrets set ...` in production, `backend/.env` for local dev). Nothing here
+can be automated on your behalf — each involves your own billing/identity.
+
+| # | What | Where to get it | Fly secret / env var |
+|---|---|---|---|
+| 1 | **Real email delivery** | [resend.com](https://resend.com) → add + verify a sending domain (DNS records) → API Keys → create key | `RESEND_API_KEY`, `EMAIL_FROM="Your Shop Name <intake@yourdomain.com>"` (the `EMAIL_FROM` domain **must** match the verified Resend domain) |
+| 2 | **Real SMS delivery** | [twilio.com](https://twilio.com) → Console → get Account SID + Auth Token → buy a phone number (SMS-capable) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
+| 3 | **Inbound SMS webhook** | Twilio Console → Phone Numbers → your number → "A message comes in" → set to `POST https://<api-domain>/v1/webhooks/twilio/sms` | (no env var — configured in Twilio's dashboard) |
+| 4 | **Persistent file storage** | Cloudflare R2 (cheapest, S3-compatible) or AWS S3 → create bucket + access key | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` (R2: `https://<account>.r2.cloudflarestorage.com`) |
+| 5 | **AI triage/OCR/damage assessment** | [platform.openai.com](https://platform.openai.com) → API keys → create key, **and make sure the account has billing/credits** (a key with `insufficient_quota` silently falls back to the rule-based driver — check `GET /health/ready` → `"ai"` should say `"ok (openai)"`, not `"ok (rules)"`, once configured) | `OPENAI_API_KEY` |
+| 6 | **Auth secret** | Generate locally: `openssl rand -hex 32` | `JWT_SECRET` (app refuses to boot in production with the default dev value) |
+| 7 | **CORS lockdown** | The exact origin(s) your deployed web intake page / portal are served from | `CORS_ALLOWED_ORIGINS` (comma-separated; without this, prod reflects any origin) |
+| 8 | **Intake link domain** | Wherever you deploy the static web export (step 3 above) | `INTAKE_BASE_URL` |
+| 9 | **Legal document placeholders** | Your actual company/entity name, a real support inbox, and which state's law governs your ToS | Edit `COMPANY_NAME` / `CONTACT_EMAIL` / `GOVERNING_LAW` at the top of `backend/src/modules/legal/legal.content.ts` — **and get the templates reviewed by a licensed attorney before public launch**, especially if operating outside the US or handling EU/UK customer data (GDPR) |
+
+Apply all of the above to Fly in one shot:
+```bash
+fly secrets set \
+  RESEND_API_KEY="re_..." EMAIL_FROM="Your Shop <intake@yourdomain.com>" \
+  TWILIO_ACCOUNT_SID="AC..." TWILIO_AUTH_TOKEN="..." TWILIO_FROM_NUMBER="+1..." \
+  S3_BUCKET="..." S3_ACCESS_KEY_ID="..." S3_SECRET_ACCESS_KEY="..." S3_ENDPOINT="..." \
+  OPENAI_API_KEY="sk-..." \
+  JWT_SECRET="$(openssl rand -hex 32)" \
+  CORS_ALLOWED_ORIGINS="https://intake.yourdomain.com,https://portal.yourdomain.com" \
+  INTAKE_BASE_URL="https://intake.yourdomain.com" \
+  -a autobody-intake-api
+```
+
 ## Post-deploy checklist
 
 - [ ] `curl https://<api-domain>/health/ready` returns `"status": "ready"`
-      with all four checks `ok`.
-- [ ] `S3_*` secrets set (don't run production on local-disk storage).
+      with all four checks `ok` — specifically `"email": "ok (resend)"`,
+      `"ai": "ok (openai)"` (not `"preview"`/`"rules"`, unless intentional).
+- [ ] `S3_*` secrets set (don't run production on local-disk storage — Fly
+      machines are ephemeral and uploads will vanish on redeploy/restart).
+- [ ] `TWILIO_*` secrets set and the inbound webhook URL configured in the
+      Twilio console (item 3 above) — otherwise SMS silently falls back to
+      the "preview" driver (logged, never actually sent).
 - [ ] `RESEND_API_KEY` set (otherwise emails only go to the local preview
       log, not real inboxes).
 - [ ] `JWT_SECRET` set to a real random value (never the `dev-insecure-*`
       default).
-- [ ] `INTAKE_BASE_URL` points at the deployed web intake page, not
-      `localhost`.
+- [ ] `INTAKE_BASE_URL` and `CORS_ALLOWED_ORIGINS` point at your real
+      deployed domains, not `localhost`.
+- [ ] Legal placeholders (`COMPANY_NAME`/`CONTACT_EMAIL`/`GOVERNING_LAW`)
+      updated and reviewed by counsel.
 - [ ] `npx prisma migrate deploy` run against the production DB.
-- [ ] Test signup → login → submit an intake → finalize end-to-end against
-      the deployed URLs before onboarding a real shop.
+- [ ] Test signup → login → submit an intake → finalize → send a real SMS
+      status update end-to-end against the deployed URLs before onboarding
+      a real shop.
 

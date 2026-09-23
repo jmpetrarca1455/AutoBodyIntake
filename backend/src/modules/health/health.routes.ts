@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../lib/prisma.js';
-import { storageDriver, emailDriver, aiDriver } from '../../config/index.js';
+import { storageDriver, emailDriver, aiDriver, smsDriver } from '../../config/index.js';
 
 /**
  * Health & readiness endpoints.
@@ -29,6 +29,7 @@ export async function healthRoutes(app: FastifyInstance): Promise<void> {
         database,
         storage: `ok (${storageDriver})`,
         email: `ok (${emailDriver})`,
+        sms: `ok (${smsDriver})`,
         ai: `ok (${aiDriver})`,
       },
     });
