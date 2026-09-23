@@ -1255,13 +1255,15 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
-  section: { marginBottom: spacing.lg },
+  section: { marginBottom: spacing.lg, position: 'relative', zIndex: 10 },
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
+    position: 'relative',
+    zIndex: 1,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -1270,8 +1272,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     marginLeft: spacing.xs,
     marginRight: spacing.xs,
+    position: 'relative',
+    zIndex: 50,
   },
-  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexShrink: 1,
+    position: 'relative',
+    zIndex: 50,
+  },
   sectionTitleRow: {
     fontSize: 13,
     fontWeight: '700',
@@ -1279,7 +1290,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  statusDropdownWrap: { position: 'relative', zIndex: 20 },
+  statusDropdownWrap: { position: 'relative', zIndex: 100 },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1306,6 +1317,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+    zIndex: 100,
   },
   statusMenuItem: {
     flexDirection: 'row',
@@ -1437,6 +1449,7 @@ const styles = StyleSheet.create({
   smallButtonText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   buttonDisabled: { opacity: 0.5 },
 });
+
 
 
 
