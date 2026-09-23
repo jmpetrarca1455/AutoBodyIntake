@@ -77,6 +77,11 @@ export default function Dashboard() {
           <Text style={styles.muted}>{shop?.ownerEmail}</Text>
         </View>
         <View style={styles.headerActions}>
+          <Link href="/portal/settings" asChild>
+            <Pressable>
+              <Text style={styles.link}>Intake link & settings</Text>
+            </Pressable>
+          </Link>
           {role === 'OWNER' ? (
             <Link href="/portal/staff" asChild>
               <Pressable>
@@ -181,6 +186,7 @@ const styles = StyleSheet.create({
   },
   rowTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 },
 });
+
 
 
 

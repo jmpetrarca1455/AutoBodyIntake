@@ -6,7 +6,7 @@
 - **Project codename:** AutoBody Intake (working title — rename later)
 - **Started:** September 22, 2026
 - **Owner:** John
-- **Last updated:** September 22, 2026 (multi-user shop roles, Fly.io deploy + Docker fix, backend deployed & healthy — see docs/ARCHITECTURE.md / docs/DEPLOYMENT.md)
+- **Last updated:** September 22, 2026 (Full local pilot dry-run verified end-to-end; shop settings/intake-link/QR screen added; fixed two monorepo dependency bugs — see docs/LOCAL_PILOT_TESTING.md)
 
 ---
 
@@ -259,6 +259,7 @@ AutoBodyIntake/
 - ✅ Shop login + `/auth/me`
 - ✅ Tenant auth guard (every protected route scoped to `request.shopId`, never a client param)
 - ✅ Shop dashboard API (stats, submission inbox, submission detail, settings update) — replaces email-only view
+- ✅ Shop settings screen (intake link, QR code, copy button, editable shop details) — non-technical owners can self-serve their link
 - ✅ Cross-tenant isolation verified (a shop cannot see another shop's data)
 
 ### 🤖 AI Employee Layer
