@@ -2,6 +2,7 @@ import type {
   AdjusterEmailDraft,
   CommunicationLogEntry,
   CreateIntakeInput,
+  DraftRecipientEmailInput,
   DraftStatusUpdateInput,
   LogCommunicationNoteInput,
   SendAdjusterEmailInput,
@@ -10,7 +11,7 @@ import type {
   StatusUpdateDraft,
 } from '@autobody/shared';
 import { prisma } from '../../lib/prisma.js';
-import { draftAdjusterEmail, draftStatusUpdate } from '../ai/drafts.service.js';
+import { draftAdjusterEmail, draftRecipientEmail, draftStatusUpdate } from '../ai/drafts.service.js';
 import { sendRawEmail } from '../email/email.service.js';
 import { sendSms } from './sms.service.js';
 
@@ -283,6 +284,32 @@ export async function draftAdjusterEmailForSubmission(
   });
 }
 
+/**
+ * AI-draft a freeform email to a parts supplier or insurance company
+ * directly (not the adjuster-specific flow above) — generalizes the same
+ * "never start from a blank page" pattern to every recipient type.
+ */
+export async function draftGenericEmailForSubmission(
+  shopId: string,
+  submissionId: string,
+  input: DraftRecipientEmailInput,
+): Promise<AdjusterEmailDraft | null> {
+  const submission = await getScopedSubmission(shopId, submissionId);
+  if (!submission) return null;
+
+  const data = submission.data as unknown as CreateIntakeInput;
+
+  return draftRecipientEmail({
+    shopName: submission.shop.name,
+    customerName: submission.customerName,
+    vehicleInfo: submission.vehicleInfo,
+    recipientLabel: input.recipientLabel,
+    purpose: input.purpose,
+    context: input.context,
+    claimNumber: submission.claimNumber ?? data.insurance?.claimNumber,
+  });
+}
+
 export async function sendAdjusterEmail(
   shopId: string,
   submissionId: string,
@@ -389,6 +416,8 @@ export async function sendGenericEmail(
   });
   return toEntry(row);
 }
+
+
 
 
 

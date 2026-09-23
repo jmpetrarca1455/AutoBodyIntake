@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Linking,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -80,6 +81,8 @@ export default function IntakeForm() {
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState('');
   const [done, setDone] = useState(false);
+  const [decodingVin, setDecodingVin] = useState(false);
+  const [vinNotFound, setVinNotFound] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -92,6 +95,30 @@ export default function IntakeForm() {
   // Type-safe section updaters.
   function set<K extends keyof Draft>(section: K, patch: Partial<Draft[K]>) {
     setDraft((d) => ({ ...d, [section]: { ...d[section], ...patch } }));
+  }
+
+  /** Auto-fill year/make/model from the VIN (free NHTSA lookup) so the
+   * customer doesn't have to type three more fields by hand. */
+  async function decodeVin() {
+    if (!draft.vehicle.vin || draft.vehicle.vin.length < 11) return;
+    setDecodingVin(true);
+    setVinNotFound(false);
+    try {
+      const result = await api.decodeVin(draft.vehicle.vin);
+      if (result.found) {
+        set('vehicle', {
+          year: result.year ? String(result.year) : draft.vehicle.year,
+          make: result.make ?? draft.vehicle.make,
+          model: result.model ?? draft.vehicle.model,
+        });
+      } else {
+        setVinNotFound(true);
+      }
+    } catch {
+      setVinNotFound(true);
+    } finally {
+      setDecodingVin(false);
+    }
   }
 
   async function submit() {
@@ -326,6 +353,16 @@ export default function IntakeForm() {
             value={draft.vehicle.vin}
             onChangeText={(v) => set('vehicle', { vin: v })}
           />
+          <Pressable
+            style={[styles.decodeButton, decodingVin && { opacity: 0.5 }]}
+            disabled={decodingVin || !draft.vehicle.vin || draft.vehicle.vin.length < 11}
+            onPress={decodeVin}
+          >
+            <Text style={styles.decodeButtonText}>
+              {decodingVin ? 'Looking up…' : '✨ Auto-fill year/make/model from VIN'}
+            </Text>
+          </Pressable>
+          {vinNotFound ? <Text style={styles.tiny}>Couldn't find that VIN — please enter details manually.</Text> : null}
           <Field
             label="What happened?"
             multiline
@@ -424,7 +461,22 @@ const styles = StyleSheet.create({
   successTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
   legal: { fontSize: 12, color: colors.muted, lineHeight: 18, textAlign: 'center', marginBottom: spacing.sm },
   link: { color: colors.text, fontWeight: '600', textDecorationLine: 'underline' },
+  decodeButton: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  decodeButtonText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  tiny: { fontSize: 11, color: colors.muted, marginBottom: spacing.sm },
 });
+
+
+
+
 
 
 

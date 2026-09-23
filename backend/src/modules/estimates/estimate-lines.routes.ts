@@ -3,6 +3,7 @@ import { createEstimateLineItemSchema, updateEstimateLineItemSchema } from '@aut
 import {
   createEstimateLine,
   deleteEstimateLine,
+  getEstimateSuggestions,
   listEstimateLines,
   updateEstimateLine,
 } from './estimate-lines.service.js';
@@ -18,6 +19,16 @@ export async function estimateLinesRoutes(app: FastifyInstance): Promise<void> {
   app.get('/dashboard/submissions/:id/estimate-lines', async (request, reply) => {
     const { id } = request.params as { id: string };
     const result = await listEstimateLines(request.shopId!, id);
+    if (!result) return reply.notFound('Submission not found');
+    return result;
+  });
+
+  // AI-suggest a starting set of line items from the damage assessment —
+  // returns suggestions only, nothing is persisted until staff accepts one
+  // (by POSTing it as a normal line via the endpoint below).
+  app.post('/dashboard/submissions/:id/estimate-lines/ai-suggest', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await getEstimateSuggestions(request.shopId!, id);
     if (!result) return reply.notFound('Submission not found');
     return result;
   });
@@ -51,4 +62,6 @@ export async function estimateLinesRoutes(app: FastifyInstance): Promise<void> {
     return { deleted: true };
   });
 }
+
+
 

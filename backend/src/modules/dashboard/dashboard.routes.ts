@@ -12,6 +12,8 @@ import {
   getSmartQueue,
   getShopReports,
   getSchedule,
+  getDigest,
+  suggestPickupDate,
   uploadStaffAttachment,
   deleteAttachment,
 } from './dashboard.service.js';
@@ -45,6 +47,20 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   // drop-off/pickup, soonest first.
   app.get('/dashboard/schedule', async (request) => {
     return getSchedule(request.shopId!);
+  });
+
+  // AI Daily Digest — narrative morning-briefing summary of the whole shop.
+  app.get('/dashboard/digest', async (request) => {
+    return getDigest(request.shopId!);
+  });
+
+  // Rule-based suggested pickup/completion date for a single submission —
+  // never auto-applied, just a starting point for the Scheduling section.
+  app.get('/dashboard/submissions/:id/suggested-pickup-date', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await suggestPickupDate(request.shopId!, id);
+    if (!result) return reply.notFound('Submission not found');
+    return result;
   });
 
   app.get('/dashboard/submissions', async (request) => {
@@ -180,6 +196,8 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
+
+
 
 
 

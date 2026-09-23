@@ -54,5 +54,10 @@ export interface EstimateTotals {
 export interface EstimateResponse {
   lines: EstimateLineItemEntry[];
   totals: EstimateTotals;
+  /** Damage-assessment areas that don't appear to have a matching estimate
+   * line yet — a safety net against under-quoting a repair (see
+   * ai/estimate-suggestions.service.ts `checkEstimateGaps`). */
+  gapWarnings: string[];
 }
+
 

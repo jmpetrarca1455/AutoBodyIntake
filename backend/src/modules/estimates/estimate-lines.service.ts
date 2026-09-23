@@ -1,6 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
+import { checkEstimateGaps } from '../ai/estimate-suggestions.service.js';
 import type {
   CreateEstimateLineItemInput,
+  DamageAssessment,
   EstimateLineCategory,
   EstimateLineItemEntry,
   EstimateResponse,
@@ -73,7 +75,12 @@ export async function listEstimateLines(shopId: string, submissionId: string): P
     orderBy: { createdAt: 'asc' },
   });
   const lines = rows.map(toEntry);
-  return { lines, totals: computeTotals(lines) };
+  const damageAssessment = submission.damageAssessment as unknown as DamageAssessment | null;
+  const gapWarnings = checkEstimateGaps(
+    damageAssessment,
+    lines.map((l) => l.description),
+  );
+  return { lines, totals: computeTotals(lines), gapWarnings };
 }
 
 export async function createEstimateLine(
@@ -145,4 +152,29 @@ export async function deleteEstimateLine(
   await prisma.estimateLineItem.delete({ where: { id: lineId } });
   return true;
 }
+
+/**
+ * Gathers the submission's damage context and asks the AI layer to suggest
+ * a starting set of estimate line items — the "AI does the estimator's
+ * first pass" feature. Returns suggestions only; nothing is persisted
+ * until staff explicitly accepts a suggestion (POST as a normal line).
+ */
+export async function getEstimateSuggestions(shopId: string, submissionId: string) {
+  const submission = await getScopedSubmission(shopId, submissionId);
+  if (!submission) return null;
+
+  const existing = await prisma.estimateLineItem.findMany({ where: { submissionId }, select: { description: true } });
+  const data = submission.data as unknown as { vehicle?: { damageDescription?: string } };
+
+  const { suggestEstimateLines } = await import('../ai/estimate-suggestions.service.js');
+  return suggestEstimateLines({
+    vehicleInfo: submission.vehicleInfo,
+    damageDescription: data.vehicle?.damageDescription,
+    damageAssessment: submission.damageAssessment as unknown as DamageAssessment | null,
+    existingDescriptions: existing.map((e) => e.description),
+  });
+}
+
+
+
 

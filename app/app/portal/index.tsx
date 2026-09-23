@@ -2,21 +2,25 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState, useCallback } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { useAuth } from '../../src/auth';
-import { api, type DashboardStats } from '../../src/api';
+import { api, type DashboardStats, type ShopDigest } from '../../src/api';
 import { NavCard } from '../../src/components/ui';
 import { colors, radius, spacing } from '../../src/theme';
 
 /**
- * Home dashboard — the shop's landing page after login. Shows top-line
- * stats, then a grid of navigation cards to every module (Smart Queue,
- * Repair Workflow Board, Customers, Scheduling, Parts Orders, Reports,
- * Staff, Settings), the same "hub of services" pattern CCC ONE uses to
- * tie its Estimating/Workflow/Parts/Payments modules together.
+ * Home dashboard — the shop's landing page after login. Shows an AI-
+ * generated daily digest (the "walk in and already know what today looks
+ * like" feature), top-line stats, then a grid of navigation cards to every
+ * module (Smart Queue, Repair Workflow Board, Customers, Scheduling, Parts
+ * Orders, Reports, Staff, Settings) — the same "hub of services" pattern
+ * CCC ONE uses to tie its Estimating/Workflow/Parts/Payments modules
+ * together.
  */
 export default function Dashboard() {
   const router = useRouter();
   const { shop, role, loading: authLoading, logout, token } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [digest, setDigest] = useState<ShopDigest | null>(null);
+  const [digestLoading, setDigestLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -25,17 +29,30 @@ export default function Dashboard() {
     setStats(s);
   }, [token]);
 
+  const loadDigest = useCallback(async () => {
+    if (!token) return;
+    setDigestLoading(true);
+    try {
+      const d = await api.getDigest(token);
+      setDigest(d);
+    } catch {
+      // Digest is a nice-to-have — never block the dashboard on it.
+    } finally {
+      setDigestLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!authLoading && !token) {
       router.replace('/portal/login');
       return;
     }
     if (token) {
-      load()
+      Promise.all([load(), loadDigest()])
         .catch(() => {})
         .finally(() => setLoading(false));
     }
-  }, [authLoading, token, load, router]);
+  }, [authLoading, token, load, loadDigest, router]);
 
   if (authLoading || loading) {
     return (
@@ -60,6 +77,45 @@ export default function Dashboard() {
         >
           <Text style={styles.logout}>Log out</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.digestCard}>
+        <View style={styles.digestHeaderRow}>
+          <Text style={styles.digestLabel}>✨ AI Daily Digest</Text>
+          <Pressable onPress={loadDigest} disabled={digestLoading}>
+            <Text style={styles.digestRefresh}>{digestLoading ? 'Refreshing…' : 'Refresh'}</Text>
+          </Pressable>
+        </View>
+        {digest ? (
+          <>
+            <Text style={styles.digestHeadline}>{digest.headline}</Text>
+            <Text style={styles.digestNarrative}>{digest.narrative}</Text>
+            {digest.topPriorities.length > 0 ? (
+              <View style={styles.digestColumns}>
+                <View style={styles.digestColumn}>
+                  <Text style={styles.digestColumnTitle}>Top priorities</Text>
+                  {digest.topPriorities.map((p, i) => (
+                    <Text key={i} style={styles.digestBullet}>
+                      • {p}
+                    </Text>
+                  ))}
+                </View>
+                {digest.watchouts.length > 0 ? (
+                  <View style={styles.digestColumn}>
+                    <Text style={styles.digestColumnTitle}>Watch out for</Text>
+                    {digest.watchouts.map((w, i) => (
+                      <Text key={i} style={styles.digestBullet}>
+                        • {w}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <Text style={styles.muted}>No digest yet.</Text>
+        )}
       </View>
 
       {stats ? (
@@ -170,4 +226,31 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  digestCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  digestHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
+  digestLabel: { fontSize: 13, fontWeight: '800', color: colors.primary },
+  digestRefresh: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+  digestHeadline: { fontSize: 17, fontWeight: '800', color: colors.text, marginBottom: 4 },
+  digestNarrative: { fontSize: 13, color: colors.text, lineHeight: 19, marginBottom: spacing.sm },
+  digestColumns: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  digestColumn: { flexGrow: 1, flexBasis: 200, minWidth: 180 },
+  digestColumnTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  digestBullet: { fontSize: 13, color: colors.text, marginBottom: 3, lineHeight: 18 },
 });
+
+
+

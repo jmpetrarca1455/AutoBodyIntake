@@ -36,6 +36,12 @@ import type {
   UpdatePartsOrderInput,
   PartsOrderEntry,
   PartsOrderWithSubmission,
+  VinDecodeResult,
+  SuggestEstimateLinesResponse,
+  EstimateLineSuggestion,
+  ShopDigest,
+  SuggestedPickupDate,
+  DraftRecipientEmailInput,
 } from '@autobody/shared';
 import {
   documentKindForAttachmentKind,
@@ -83,6 +89,12 @@ export type {
   UpdatePartsOrderInput,
   PartsOrderEntry,
   PartsOrderWithSubmission,
+  VinDecodeResult,
+  SuggestEstimateLinesResponse,
+  EstimateLineSuggestion,
+  ShopDigest,
+  SuggestedPickupDate,
+  DraftRecipientEmailInput,
 };
 export {
   documentKindForAttachmentKind,
@@ -584,7 +596,49 @@ export const api = {
   getSchedule(authToken: string): Promise<SubmissionSummary[]> {
     return request('/v1/dashboard/schedule', undefined, authToken);
   },
+
+  // ── AI: VIN decode (free NHTSA lookup, no auth needed) ─
+  decodeVin(vin: string): Promise<VinDecodeResult> {
+    return request(`/v1/vin-decode/${encodeURIComponent(vin)}`, undefined, undefined);
+  },
+
+  // ── AI: estimate line-item suggestions ─────────────────
+  suggestEstimateLines(authToken: string, submissionId: string): Promise<SuggestEstimateLinesResponse> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/estimate-lines/ai-suggest`,
+      { method: 'POST' },
+      authToken,
+    );
+  },
+
+  // ── AI: shop daily digest ──────────────────────────────
+  getDigest(authToken: string): Promise<ShopDigest> {
+    return request('/v1/dashboard/digest', undefined, authToken);
+  },
+
+  // ── AI: suggested pickup/completion date ───────────────
+  suggestPickupDate(authToken: string, submissionId: string): Promise<SuggestedPickupDate> {
+    return request(`/v1/dashboard/submissions/${submissionId}/suggested-pickup-date`, undefined, authToken);
+  },
+
+  // ── AI: draft a freeform email to a parts supplier / insurance-direct ──
+  draftRecipientEmail(
+    authToken: string,
+    submissionId: string,
+    input: DraftRecipientEmailInput,
+  ): Promise<AdjusterEmailDraft> {
+    return request(
+      `/v1/dashboard/submissions/${submissionId}/communications/email/draft`,
+      { method: 'POST', body: JSON.stringify(input) },
+      authToken,
+    );
+  },
 };
+
+
+
+
+
 
 
 

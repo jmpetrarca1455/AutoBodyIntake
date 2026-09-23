@@ -5,9 +5,11 @@ import {
   sendAdjusterEmailSchema,
   logCommunicationNoteSchema,
   sendGenericEmailSchema,
+  draftRecipientEmailSchema,
 } from '@autobody/shared';
 import {
   draftAdjusterEmailForSubmission,
+  draftGenericEmailForSubmission,
   draftStatusUpdateForSubmission,
   listCommunications,
   logCommunicationNote,
@@ -76,6 +78,20 @@ export async function communicationsRoutes(app: FastifyInstance): Promise<void> 
     return entry;
   });
 
+  // AI-draft a freeform email to a parts supplier or insurance company
+  // directly — same "never start from a blank page" pattern generalized to
+  // every recipient type.
+  app.post('/dashboard/submissions/:id/communications/email/draft', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = draftRecipientEmailSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.badRequest(body.error.issues.map((i) => i.message).join('; '));
+    }
+    const draft = await draftGenericEmailForSubmission(request.shopId!, id, body.data);
+    if (!draft) return reply.notFound('Submission not found');
+    return draft;
+  });
+
   // Manually log a communication that happened outside the portal (a call,
   // an in-person conversation, etc.) — no send, just an audit-trail entry.
   app.post('/dashboard/submissions/:id/communications/note', async (request, reply) => {
@@ -102,6 +118,8 @@ export async function communicationsRoutes(app: FastifyInstance): Promise<void> 
     return entry;
   });
 }
+
+
 
 
 

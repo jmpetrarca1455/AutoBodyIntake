@@ -194,6 +194,99 @@ export async function draftAdjusterEmail(input: AdjusterDraftInput): Promise<Adj
   return draftAdjusterEmailWithRules(input);
 }
 
+// ── Generic recipient email drafts (parts supplier / insurance-direct) ──
+
+export interface RecipientEmailDraftInput {
+  shopName: string;
+  customerName: string;
+  vehicleInfo: string | null;
+  recipientLabel?: string;
+  purpose: 'parts_quote' | 'parts_order_status' | 'insurance_update' | 'general';
+  context?: string;
+  claimNumber?: string;
+}
+
+const PURPOSE_INTENT: Record<RecipientEmailDraftInput['purpose'], string> = {
+  parts_quote: 'request a price quote and availability for a specific part',
+  parts_order_status: 'ask for a status/ETA update on a part that was already ordered',
+  insurance_update: 'ask the insurance company directly for a status update on a claim/repair approval',
+  general: 'send a general professional message',
+};
+
+function draftRecipientEmailWithRules(input: RecipientEmailDraftInput): AdjusterEmailDraft {
+  const greeting = input.recipientLabel ? `Hello ${input.recipientLabel},` : 'Hello,';
+  const vehicleLine = input.vehicleInfo ? ` (${input.vehicleInfo})` : '';
+  const subjectBase =
+    input.purpose === 'parts_quote'
+      ? `Parts quote request — ${input.customerName}${vehicleLine}`
+      : input.purpose === 'parts_order_status'
+        ? `Order status check — ${input.customerName}${vehicleLine}`
+        : input.purpose === 'insurance_update'
+          ? `Claim status request${input.claimNumber ? ` — claim #${input.claimNumber}` : ''} — ${input.customerName}`
+          : `Message regarding ${input.customerName}${vehicleLine}`;
+
+  const body = `${greeting}
+
+I'm reaching out from ${input.shopName} to ${PURPOSE_INTENT[input.purpose]} for our customer ${input.customerName}${
+    input.vehicleInfo ? `, driving a ${input.vehicleInfo}` : ''
+  }.${input.claimNumber ? ` Claim number: ${input.claimNumber}.` : ''}${
+    input.context ? `\n\n${input.context}` : ''
+  }
+
+Please let us know at your earliest convenience — we appreciate your help getting this repair moving.
+
+Best regards,
+${input.shopName}`;
+
+  return { subject: subjectBase, body, generatedBy: 'rules', generatedAt: new Date().toISOString() };
+}
+
+async function draftRecipientEmailWithOpenAI(input: RecipientEmailDraftInput): Promise<AdjusterEmailDraft> {
+  const prompt = `Write a short, professional business email from a collision repair shop ("${input.shopName}") to ${
+    input.recipientLabel ? `"${input.recipientLabel}"` : 'a business contact'
+  }. Purpose: ${PURPOSE_INTENT[input.purpose]}. Customer: "${input.customerName}", vehicle: ${
+    input.vehicleInfo ?? 'unspecified'
+  }.${input.claimNumber ? ` Claim number: ${input.claimNumber}.` : ''}${
+    input.context ? ` Additional context: ${input.context}` : ''
+  } Respond with ONLY a JSON object: {"subject": string, "body": string}.`;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: config.AI_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    }),
+  });
+  if (!res.ok) throw new Error(`OpenAI request failed: ${res.status}`);
+  const body = (await res.json()) as { choices: Array<{ message: { content: string } }> };
+  const content = body.choices[0]?.message.content;
+  if (!content) throw new Error('OpenAI response had no content');
+  const parsed = JSON.parse(content) as { subject: string; body: string };
+  return { ...parsed, generatedBy: 'openai', generatedAt: new Date().toISOString() };
+}
+
+/**
+ * AI-drafts an email to ANY recipient type (parts supplier, insurance
+ * company direct, or general) — generalizes the adjuster-email pattern so
+ * staff never start a parts-quote request or insurance-direct message from
+ * a blank page either.
+ */
+export async function draftRecipientEmail(input: RecipientEmailDraftInput): Promise<AdjusterEmailDraft> {
+  if (hasOpenAI) {
+    try {
+      return await draftRecipientEmailWithOpenAI(input);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[drafts] OpenAI recipient-email draft failed, falling back to rules:', (err as Error).message);
+    }
+  }
+  return draftRecipientEmailWithRules(input);
+}
+
 // Re-export for callers that only need the type import path consolidated here.
 export type { CreateIntakeInput };
+
 

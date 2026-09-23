@@ -2,12 +2,16 @@ import { prisma } from '../../lib/prisma.js';
 import { config } from '../../config/index.js';
 import { generateTriageSummary } from '../ai/ai.service.js';
 import { assessDamage } from '../ai/estimate.service.js';
+import { generateShopDigest } from '../ai/digest.service.js';
+import { listShopPartsOrders } from '../parts-orders/parts-orders.service.js';
 import { buildStorageKey, storage } from '../storage/storage.service.js';
 import type {
   CreateIntakeInput,
   AiTriageSummary,
   AttachmentKind,
   QueueItem,
+  ShopDigest,
+  SuggestedPickupDate,
   StaffUpdateSubmissionInput,
 } from '@autobody/shared';
 import { buildVehicleSummary } from '@autobody/shared';
@@ -383,6 +387,78 @@ export async function getShopReports(shopId: string): Promise<ShopReport> {
     last30DaysVolume,
   };
 }
+
+/**
+ * AI Daily Digest — combines the Smart Queue, KPI report, and outstanding
+ * parts into a short narrative + action list. See ai/digest.service.ts.
+ */
+export async function getDigest(shopId: string): Promise<ShopDigest> {
+  const [queue, report, outstandingParts] = await Promise.all([
+    getSmartQueue(shopId),
+    getShopReports(shopId),
+    listShopPartsOrders(shopId),
+  ]);
+  return generateShopDigest({ queue, report, outstandingParts });
+}
+
+/**
+ * Suggested pickup/completion date — rule-based (no AI cost): sums labor
+ * hours from the estimate (falling back to the AI damage assessment's
+ * range when no estimate lines exist yet), assumes a conservative
+ * productive-hours-per-day shop capacity, adds a buffer for any
+ * backordered parts on this RO, and adds a small queue-congestion buffer
+ * based on how many other active ROs are ahead of it. Always a *suggestion*
+ * staff can override — never auto-applied.
+ */
+const PRODUCTIVE_HOURS_PER_DAY = 6;
+const DAYS_PER_BACKORDERED_PART = 3;
+
+export async function suggestPickupDate(shopId: string, submissionId: string): Promise<SuggestedPickupDate | null> {
+  const submission = await prisma.submission.findFirst({ where: { id: submissionId, shopId } });
+  if (!submission) return null;
+
+  const lines = await prisma.estimateLineItem.findMany({ where: { submissionId, category: 'LABOR' } });
+  let laborHours = lines.reduce((sum, l) => sum + (l.laborHours ?? 0), 0);
+  if (laborHours === 0) {
+    const damage = submission.damageAssessment as unknown as { estimatedLaborHours?: { min: number; max: number } } | null;
+    if (damage?.estimatedLaborHours) {
+      laborHours = (damage.estimatedLaborHours.min + damage.estimatedLaborHours.max) / 2;
+    }
+  }
+  if (laborHours === 0) laborHours = 4; // conservative default for an untriaged repair
+
+  const backorderedCount = await prisma.partsOrder.count({
+    where: { submissionId, status: 'BACKORDERED' },
+  });
+
+  const activeAhead = await prisma.submission.count({
+    where: {
+      shopId,
+      status: { in: ['RECEIVED', 'IN_REVIEW', 'ESTIMATE_READY', 'IN_REPAIR'] },
+      createdAt: { lt: submission.createdAt },
+    },
+  });
+
+  const repairDays = Math.max(1, Math.ceil(laborHours / PRODUCTIVE_HOURS_PER_DAY));
+  const backorderBufferDays = backorderedCount * DAYS_PER_BACKORDERED_PART;
+  const queueBufferDays = Math.min(5, Math.floor(activeAhead / 2)); // shared shop capacity, capped
+
+  const totalDays = repairDays + backorderBufferDays + queueBufferDays;
+  const suggestedDate = new Date(Date.now() + totalDays * 24 * 60 * 60 * 1000);
+
+  const reasonParts = [`${laborHours.toFixed(1)} labor hour(s) at ~${PRODUCTIVE_HOURS_PER_DAY} productive hrs/day (${repairDays}d)`];
+  if (backorderedCount > 0) reasonParts.push(`+${backorderBufferDays}d for ${backorderedCount} backordered part(s)`);
+  if (queueBufferDays > 0) reasonParts.push(`+${queueBufferDays}d for ${activeAhead} job(s) ahead in queue`);
+
+  return {
+    suggestedDate: suggestedDate.toISOString(),
+    reasoning: reasonParts.join(', '),
+    estimatedLaborHours: Math.round(laborHours * 10) / 10,
+    blockedByBackorderedParts: backorderedCount > 0,
+  };
+}
+
+
 
 
 

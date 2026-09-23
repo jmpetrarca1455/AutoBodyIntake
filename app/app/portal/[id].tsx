@@ -36,6 +36,9 @@ import {
   type SubmissionDetail,
   type EstimateLineItemEntry,
   type PartsOrderEntry,
+  type VinDecodeResult,
+  type EstimateLineSuggestion,
+  type SuggestedPickupDate,
 } from '../../src/api';
 import { ChoiceRow, Field, PrimaryButton, Section } from '../../src/components/ui';
 import { colors, radius, spacing } from '../../src/theme';
@@ -302,12 +305,28 @@ export default function SubmissionDetailScreen() {
   const [newPartSupplier, setNewPartSupplier] = useState('');
   const [addingPart, setAddingPart] = useState(false);
 
+  // AI: VIN decode
+  const [decodingVin, setDecodingVin] = useState(false);
+  const [vinDecodeResult, setVinDecodeResult] = useState<VinDecodeResult | null>(null);
+
+  // AI: estimate line suggestions
+  const [suggestions, setSuggestions] = useState<EstimateLineSuggestion[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [gapWarnings, setGapWarnings] = useState<string[]>([]);
+
+  // AI: generic email drafting (extends the parts-supplier/insurance form)
+  const [draftingGeneric, setDraftingGeneric] = useState(false);
+
+  // AI: suggested pickup date
+  const [suggestingPickup, setSuggestingPickup] = useState(false);
+  const [pickupSuggestion, setPickupSuggestion] = useState<SuggestedPickupDate | null>(null);
+
   const load = useCallback(async () => {
     if (!token || !id) return;
     const [detail, log, estimate, parts] = await Promise.all([
       api.getSubmissionDetail(token, id),
       api.listCommunications(token, id).catch(() => []),
-      api.getEstimate(token, id).catch(() => ({ lines: [], totals: { byCategory: {}, grandTotal: 0 } }) as never),
+      api.getEstimate(token, id).catch(() => ({ lines: [], totals: { byCategory: {}, grandTotal: 0 }, gapWarnings: [] }) as never),
       api.getPartsOrders(token, id).catch(() => []),
     ]);
     setSubmission(detail);
@@ -315,6 +334,7 @@ export default function SubmissionDetailScreen() {
     setStatus(detail.status);
     setForm(buildForm(detail));
     setEstimateLines(estimate.lines);
+    setGapWarnings(estimate.gapWarnings ?? []);
     setPartsOrders(parts);
     setDropoffScheduledAt(toDatetimeLocal(detail.dropoffScheduledAt));
     setPickupScheduledAt(toDatetimeLocal(detail.pickupScheduledAt));
@@ -487,6 +507,100 @@ export default function SubmissionDetailScreen() {
     if (!token || !id) return;
     await api.deletePartsOrder(token, id, orderId);
     setPartsOrders((prev) => prev.filter((o) => o.id !== orderId));
+  }
+
+  // ── AI: VIN decode (free NHTSA lookup) ───────────────────
+  async function decodeVinNow() {
+    if (!form.vehicle.vin || form.vehicle.vin.length < 11) return;
+    setDecodingVin(true);
+    setVinDecodeResult(null);
+    try {
+      const result = await api.decodeVin(form.vehicle.vin);
+      setVinDecodeResult(result);
+      if (result.found) {
+        setForm((prev) => ({
+          ...prev,
+          vehicle: {
+            ...prev.vehicle,
+            year: result.year ?? prev.vehicle.year,
+            make: result.make ?? prev.vehicle.make,
+            model: result.model ?? prev.vehicle.model,
+          },
+        }));
+      }
+    } catch {
+      setVinDecodeResult(null);
+    } finally {
+      setDecodingVin(false);
+    }
+  }
+
+  // ── AI: estimate line-item suggestions ───────────────────
+  async function fetchEstimateSuggestions() {
+    if (!token || !id) return;
+    setSuggesting(true);
+    try {
+      const result = await api.suggestEstimateLines(token, id);
+      setSuggestions(result.suggestions);
+    } catch (err) {
+      Alert.alert('Could not get suggestions', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  async function acceptSuggestion(index: number) {
+    if (!token || !id) return;
+    const s = suggestions[index];
+    if (!s) return;
+    const line = await api.addEstimateLine(token, id, {
+      category: s.category,
+      description: s.description,
+      partNumber: s.partNumber ?? undefined,
+      quantity: s.quantity,
+      unitPrice: s.unitPrice,
+      laborHours: s.laborHours ?? undefined,
+    });
+    setEstimateLines((prev) => [...prev, line]);
+    setSuggestions((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function dismissSuggestion(index: number) {
+    setSuggestions((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  // ── AI: draft a parts-supplier/insurance-direct email ────
+  async function draftGenericAI() {
+    if (!token || !id) return;
+    setDraftingGeneric(true);
+    try {
+      const purpose = genRecipientType === 'insurance' ? 'insurance_update' : 'parts_quote';
+      const draft = await api.draftRecipientEmail(token, id, {
+        purpose,
+        recipientLabel: genLabel.trim() || undefined,
+      });
+      setGenSubject(draft.subject);
+      setGenBody(draft.body);
+    } catch (err) {
+      Alert.alert('Could not draft email', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setDraftingGeneric(false);
+    }
+  }
+
+  // ── AI: suggested pickup/completion date ─────────────────
+  async function suggestPickup() {
+    if (!token || !id) return;
+    setSuggestingPickup(true);
+    try {
+      const result = await api.suggestPickupDate(token, id);
+      setPickupSuggestion(result);
+      setPickupScheduledAt(toDatetimeLocal(result.suggestedDate));
+    } catch (err) {
+      Alert.alert('Could not suggest a date', err instanceof Error ? err.message : 'Please try again.');
+    } finally {
+      setSuggestingPickup(false);
+    }
   }
 
   async function regenerate() {
@@ -928,6 +1042,22 @@ export default function SubmissionDetailScreen() {
                   </GridItem>
                   <GridItem>
                     <Field label="VIN" value={form.vehicle.vin} onChangeText={(v) => setField('vehicle', 'vin', v)} />
+                    <Pressable
+                      style={[styles.decodeVinButton, decodingVin && styles.buttonDisabled]}
+                      disabled={decodingVin || !form.vehicle.vin || form.vehicle.vin.length < 11}
+                      onPress={decodeVinNow}
+                    >
+                      <Text style={styles.decodeVinText}>
+                        {decodingVin ? 'Decoding…' : '✨ Auto-fill from VIN'}
+                      </Text>
+                    </Pressable>
+                    {vinDecodeResult ? (
+                      <Text style={styles.tiny}>
+                        {vinDecodeResult.found
+                          ? `Decoded: ${vinDecodeResult.year ?? ''} ${vinDecodeResult.make ?? ''} ${vinDecodeResult.model ?? ''}`.trim()
+                          : 'VIN not found in NHTSA database.'}
+                      </Text>
+                    ) : null}
                   </GridItem>
                   <GridItem>
                     <Field
@@ -1253,11 +1383,44 @@ export default function SubmissionDetailScreen() {
             </GridItem>
           </GroupCard>
         </View>
-        <PrimaryButton title="Save schedule" loading={savingSchedule} onPress={saveSchedule} />
+        <View style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <PrimaryButton title="Save schedule" loading={savingSchedule} onPress={saveSchedule} />
+          </View>
+          <Pressable
+            style={[styles.secondaryButton, { flex: 1 }, suggestingPickup && styles.buttonDisabled]}
+            disabled={suggestingPickup}
+            onPress={suggestPickup}
+          >
+            <Text style={styles.secondaryButtonText}>
+              {suggestingPickup ? 'Thinking…' : '✨ Suggest pickup date'}
+            </Text>
+          </Pressable>
+        </View>
         {scheduleResult ? <Text style={styles.resultText}>{scheduleResult}</Text> : null}
+        {pickupSuggestion ? (
+          <View style={styles.pickupSuggestionBox}>
+            <Text style={styles.tiny}>{pickupSuggestion.reasoning}</Text>
+            {pickupSuggestion.blockedByBackorderedParts ? (
+              <Text style={[styles.tiny, { color: colors.danger }]}>
+                ⚠ This date accounts for backordered parts — confirm before promising it to the customer.
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
       </Section>
 
       <Section title={`Repair estimate ($${estimateTotals.grandTotal.toLocaleString()})`}>
+        {gapWarnings.length > 0 && (
+          <View style={styles.gapWarningBanner}>
+            <Text style={styles.gapWarningTitle}>⚠ Possibly missing from this estimate</Text>
+            <Text style={styles.tiny}>
+              The AI damage assessment flagged these areas but no estimate line mentions them yet:{' '}
+              {gapWarnings.join(', ')}.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.groupGrid}>
           {ESTIMATE_CATEGORY_OPTIONS.map((cat) => (
             <View key={cat.value} style={styles.estimateTotalCard}>
@@ -1287,6 +1450,44 @@ export default function SubmissionDetailScreen() {
                 <Pressable onPress={() => removeEstimateLine(line.id)}>
                   <Text style={[styles.linkText, { color: colors.danger, marginLeft: spacing.sm }]}>Remove</Text>
                 </Pressable>
+              </View>
+
+            ))}
+          </View>
+        )}
+
+        <View style={{ marginTop: spacing.md }}>
+          <Pressable
+            style={[styles.decodeVinButton, { alignSelf: 'flex-start' }, suggesting && styles.buttonDisabled]}
+            disabled={suggesting}
+            onPress={fetchEstimateSuggestions}
+          >
+            <Text style={styles.decodeVinText}>
+              {suggesting ? 'Thinking…' : '✨ AI-suggest estimate lines'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {suggestions.length > 0 && (
+          <View style={[styles.groupGrid, { marginTop: spacing.md }]}>
+            {suggestions.map((s, i) => (
+              <View key={i} style={styles.suggestionCard}>
+                <Text style={styles.groupCardTitle}>{ESTIMATE_CATEGORY_LABELS[s.category]}</Text>
+                <Text style={styles.lineDescription}>{s.description}</Text>
+                <Text style={styles.tiny}>
+                  {s.category === 'LABOR'
+                    ? `${s.laborHours ?? 0} hrs @ $${s.unitPrice}/hr`
+                    : `${s.quantity} × $${s.unitPrice}`}
+                </Text>
+                <Text style={styles.suggestionReasoning}>{s.reasoning}</Text>
+                <View style={styles.suggestionActions}>
+                  <Pressable onPress={() => acceptSuggestion(i)}>
+                    <Text style={styles.linkText}>Accept</Text>
+                  </Pressable>
+                  <Pressable onPress={() => dismissSuggestion(i)}>
+                    <Text style={[styles.linkText, { color: colors.danger }]}>Dismiss</Text>
+                  </Pressable>
+                </View>
               </View>
             ))}
           </View>
@@ -1489,6 +1690,8 @@ export default function SubmissionDetailScreen() {
           options={GENERIC_EMAIL_RECIPIENT_OPTIONS}
         />
         <Field label="Recipient label (optional, e.g. business name)" value={genLabel} onChangeText={setGenLabel} />
+        <PrimaryButton title="✨ AI-draft this email" loading={draftingGeneric} onPress={draftGenericAI} />
+        <View style={{ height: spacing.sm }} />
         <TextInput
           style={styles.input}
           placeholder="Recipient email address"
@@ -1817,7 +2020,54 @@ const styles = StyleSheet.create({
   },
   lineDescription: { fontSize: 14, fontWeight: '700', color: colors.text },
   lineTotal: { fontSize: 14, fontWeight: '800', color: colors.text },
+  decodeVinButton: {
+    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  decodeVinText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  suggestionCard: {
+    flexGrow: 1,
+    flexBasis: 260,
+    minWidth: 240,
+    backgroundColor: '#f0f7ff',
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    padding: spacing.sm,
+  },
+  suggestionReasoning: { fontSize: 11, color: colors.muted, fontStyle: 'italic', marginTop: 2, marginBottom: spacing.xs },
+  suggestionActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  gapWarningBanner: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#c2410c',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  gapWarningTitle: { fontSize: 12, fontWeight: '800', color: '#c2410c', marginBottom: 2 },
+  pickupSuggestionBox: {
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
 });
+
+
+
+
+
+
+
+
+
 
 
 
